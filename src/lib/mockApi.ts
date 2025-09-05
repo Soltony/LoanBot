@@ -1,7 +1,9 @@
-import type { Borrower, Provider, Loan, Transaction, Eligibility, EligibilityProduct } from './types';
+import type { Borrower, Provider, Loan, Transaction, Eligibility, EligibilityProduct, ProductDetails } from './types';
 
 // The base URL for your loan application backend.
-const API_BASE_URL = 'https://nibterasales.nibbank.com.et';
+// For local development, we use a relative path which will be proxied by Next.js.
+// For production, this would be the full URL.
+const API_BASE_URL = '';
 
 // --- MOCK DATABASE for data not provided by the backend API ---
 let allProducts: EligibilityProduct[] = [];
