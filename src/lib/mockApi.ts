@@ -143,9 +143,10 @@ export const getActiveLoans = async (borrowerId: string): Promise<Loan[]> => {
         let totalAmountDue = loan.loanAmount;
 
         if (productDetails) {
-            // Add service fee
+            // Add service fee (as a percentage)
             if (productDetails.serviceFee) {
-                totalAmountDue += productDetails.serviceFee;
+                const serviceFeeAmount = loan.loanAmount * (productDetails.serviceFee / 100);
+                totalAmountDue += serviceFeeAmount;
             }
             // Add daily fee
             if (productDetails.interestRate && loan.disbursedDate) {
