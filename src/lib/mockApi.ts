@@ -124,13 +124,11 @@ export const getActiveLoans = async (borrowerId: string): Promise<Loan[]> => {
     console.log(`[API] Fetching active loans for borrower ${borrowerId}`);
     const rawLoans = await apiCall<any[]>(`/ussd/borrowers/${borrowerId}/loans`);
 
-    // The backend is the source of truth. We will map the fields directly.
-    // If totalAmountDue is not provided by the API, we default to loanAmount.
     const loans = rawLoans.map(loan => ({
         ...loan,
         amountRepaid: loan.repaidAmount || 0,
-        // The backend MUST provide totalAmountDue. If not, we fall back to loanAmount.
-        totalAmountDue: loan.totalAmountDue || loan.loanAmount,
+        // The backend provides the final repayable amount. Fallback to loanAmount if not present.
+        totalRepayableAmount: loan.totalRepayableAmount || loan.loanAmount, 
     }));
 
     return loans;

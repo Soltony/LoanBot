@@ -24,7 +24,7 @@ export function RepayLoanDialog({ open, onOpenChange, loan, onSuccess }: RepayLo
   const [isSuccess, setIsSuccess] = React.useState(false);
   const { toast } = useToast();
 
-  const outstandingBalance = loan.totalAmountDue - loan.amountRepaid;
+  const outstandingBalance = loan.totalRepayableAmount - loan.amountRepaid;
 
   const formSchema = z.object({
     repaymentAmount: z.coerce.number()
