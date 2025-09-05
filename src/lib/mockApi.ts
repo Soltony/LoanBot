@@ -46,25 +46,27 @@ const apiCall = async <T>(endpoint: string, options: RequestInit = {}): Promise<
 
 export const getBorrowerByPhone = async (phoneNumber: string): Promise<Borrower> => {
   console.log(`[API] Original phone number: ${phoneNumber}`);
-  // The API expects a 9-digit number. We format it by taking the last 9 digits.
   const formattedPhoneNumber = phoneNumber.slice(-9);
   console.log(`[API] Formatted phone number: ${formattedPhoneNumber}`);
 
-  // The API returns an array, we expect only one result for a unique phone number.
-  const response = await apiCall<{ id: string, fullName: string, monthlyIncome: number, employmentStatus: string }[]>(`/api/ussd/borrowers?phoneNumber=${formattedPhoneNumber}`);
-  
-  const borrowerData = response[0];
-  if (!borrowerData) {
-      throw new Error('Borrower not found');
+  // This endpoint returns a unique structure that needs special handling.
+  const response = await apiCall<{ borrowerId: string; provisionedData: { data: string }[] }>(`/api/ussd/borrowers?phoneNumber=${formattedPhoneNumber}`);
+
+  if (!response || !response.provisionedData || response.provisionedData.length === 0) {
+    throw new Error('Borrower not found or provisioned data is missing.');
   }
 
-  // Map API response to our app's Borrower type
+  // The actual borrower data is in a nested, stringified JSON object.
+  const provisionedDataString = response.provisionedData[0].data;
+  const provisionedData = JSON.parse(provisionedDataString);
+
+  // Map the parsed data to our app's Borrower type.
   return {
-    id: borrowerData.id,
-    name: borrowerData.fullName,
+    id: response.borrowerId,
+    name: provisionedData.name, // 'name' from the nested JSON
     phoneNumber: phoneNumber, // Keep original for display/state
-    monthlyIncome: borrowerData.monthlyIncome,
-    employmentStatus: borrowerData.employmentStatus,
+    monthlyIncome: provisionedData.salary, // 'salary' from the nested JSON
+    employmentStatus: 'Employed', // Assuming a default value
   };
 };
 
