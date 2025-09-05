@@ -2,6 +2,8 @@ export interface Borrower {
   id: string;
   name: string;
   phoneNumber: string;
+  monthlyIncome?: number;
+  employmentStatus?: string;
 }
 
 export interface Provider {
@@ -31,6 +33,8 @@ export interface Loan {
   amountRepaid: number;
   dueDate: string;
   repaymentStatus: 'Paid' | 'Unpaid';
+  providerId?: string; // from API
+  penaltyAmount?: number; // from API
 }
 
 export interface Transaction {
