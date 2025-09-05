@@ -1,5 +1,8 @@
 import type { Borrower, Provider, Loan, Transaction, Eligibility, EligibilityProduct, ProductDetails } from './types';
 
+// The base URL for your loan application backend.
+const API_BASE_URL = 'https://nibterasales.nibbank.com.et';
+
 // --- MOCK DATABASE for data not provided by the backend API ---
 let allProducts: EligibilityProduct[] = [];
 let allProviders: Provider[] = [];
@@ -13,7 +16,7 @@ let allProviders: Provider[] = [];
  * @returns The JSON response from the API.
  */
 const apiCall = async <T>(endpoint: string, options: RequestInit = {}): Promise<T> => {
-  const url = `https://nibterasales.nibbank.com.et${endpoint}`;
+  const url = `${API_BASE_URL}${endpoint}`;
   try {
     const response = await fetch(url, {
       ...options,
@@ -42,9 +45,13 @@ const apiCall = async <T>(endpoint: string, options: RequestInit = {}): Promise<
 // --- API FUNCTIONS ---
 
 export const getBorrowerByPhone = async (phoneNumber: string): Promise<Borrower> => {
-  console.log(`[API] Fetching borrower for phone number: ${phoneNumber}`);
+  console.log(`[API] Original phone number: ${phoneNumber}`);
+  // The API expects a 9-digit number. We format it by taking the last 9 digits.
+  const formattedPhoneNumber = phoneNumber.slice(-9);
+  console.log(`[API] Formatted phone number: ${formattedPhoneNumber}`);
+
   // The API returns an array, we expect only one result for a unique phone number.
-  const response = await apiCall<{ id: string, fullName: string, monthlyIncome: number, employmentStatus: string }[]>(`/api/ussd/borrowers?phoneNumber=${phoneNumber}`);
+  const response = await apiCall<{ id: string, fullName: string, monthlyIncome: number, employmentStatus: string }[]>(`/api/ussd/borrowers?phoneNumber=${formattedPhoneNumber}`);
   
   const borrowerData = response[0];
   if (!borrowerData) {
@@ -55,11 +62,12 @@ export const getBorrowerByPhone = async (phoneNumber: string): Promise<Borrower>
   return {
     id: borrowerData.id,
     name: borrowerData.fullName,
-    phoneNumber: phoneNumber,
+    phoneNumber: phoneNumber, // Keep original for display/state
     monthlyIncome: borrowerData.monthlyIncome,
     employmentStatus: borrowerData.employmentStatus,
   };
 };
+
 
 export const getProviders = async (): Promise<Provider[]> => {
   console.log('[API] Fetching providers from the API.');
