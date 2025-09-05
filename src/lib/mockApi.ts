@@ -2,7 +2,9 @@
 import type { Borrower, Provider, Loan, Transaction, Eligibility, EligibilityProduct, ProductDetails } from './types';
 
 // The base URL for your loan application backend.
-const API_BASE_URL = 'https://nibterasales.nibbank.com.et';
+// For local development, we use a relative path which will be proxied by Next.js.
+// For production, this would be the full URL.
+const API_BASE_URL = '/api';
 
 // --- MOCK DATABASE for data not provided by the backend API ---
 let allProducts: EligibilityProduct[] = [];
@@ -56,7 +58,7 @@ export const getBorrowerByPhone = async (phoneNumber: string): Promise<Borrower>
 
   // This endpoint returns a unique structure that needs special handling.
   try {
-    const response = await apiCall<{ borrowerId: string; provisionedData: { data: string }[] }>(`/api/ussd/borrowers?phoneNumber=${formattedPhoneNumber}`);
+    const response = await apiCall<{ borrowerId: string; provisionedData: { data: string }[] }>(`/ussd/borrowers?phoneNumber=${formattedPhoneNumber}`);
     
     console.log('[API] Full response received for borrower:', response);
 
@@ -94,7 +96,7 @@ export const getBorrowerByPhone = async (phoneNumber: string): Promise<Borrower>
 
 export const getProviders = async (): Promise<Provider[]> => {
   console.log('[API] Fetching providers from the API.');
-  const providers = await apiCall<Provider[]>('/api/providers');
+  const providers = await apiCall<Provider[]>('/providers');
   // Cache providers and products for other functions to use
   allProviders = providers;
   allProducts = providers.flatMap(p => p.products?.map(prod => ({
@@ -108,7 +110,7 @@ export const getProviders = async (): Promise<Provider[]> => {
 
 export const getEligibility = async (borrowerId: string, providerId: string): Promise<Eligibility> => {
     console.log(`[API] Fetching eligibility for borrower ${borrowerId} with provider ${providerId}`);
-    const eligibilityData = await apiCall<{ score: number, limits: { productId: string, productName: string, limit: number }[] }>(`/api/ussd/borrowers/${borrowerId}/eligibility?providerId=${providerId}`);
+    const eligibilityData = await apiCall<{ score: number, limits: { productId: string, productName: string, limit: number }[] }>(`/ussd/borrowers/${borrowerId}/eligibility?providerId=${providerId}`);
 
     // Map the 'limits' from the API to the 'products' the UI expects
     const products: EligibilityProduct[] = eligibilityData.limits.map(limit => {
@@ -132,12 +134,12 @@ export const getActiveLoans = (borrowerId: string): Promise<Loan[]> => {
     console.log(`[API] Fetching active loans for borrower ${borrowerId}`);
     // The API response for get loan history returns 'repaidAmount', but the Loan type expects 'amountRepaid'.
     // We will alias it here.
-    return apiCall<any[]>(`/api/ussd/borrowers/${borrowerId}/loans`).then(loans => loans.map(l => ({...l, amountRepaid: l.repaidAmount})));
+    return apiCall<any[]>(`/ussd/borrowers/${borrowerId}/loans`).then(loans => loans.map(l => ({...l, amountRepaid: l.repaidAmount})));
 };
 
 export const getTransactions = (borrowerId: string): Promise<Transaction[]> => {
     console.log(`[API] Fetching transactions for borrower ${borrowerId}`);
-    return apiCall<any[]>(`/api/ussd/borrowers/${borrowerId}/transactions`).then(txns => txns.map(t => ({
+    return apiCall<any[]>(`/ussd/borrowers/${borrowerId}/transactions`).then(txns => txns.map(t => ({
         id: `txn-${t.date}-${t.amount}`, // API doesn't provide an ID, so we create one
         date: new Date(t.date).toISOString(),
         description: t.description,
@@ -174,7 +176,7 @@ export const applyForLoan = async (payload: {
         repaymentStatus: 'Unpaid'
     };
     
-    return apiCall('/api/loans', {
+    return apiCall('/loans', {
         method: 'POST',
         body: JSON.stringify(requestBody),
     }).then(() => ({ success: true, loanId: `loan-${Date.now()}` })); // Assuming success if API call doesn't throw
@@ -182,7 +184,7 @@ export const applyForLoan = async (payload: {
 
 export const getProductById = (productId: string): EligibilityProduct | undefined => {
     console.log(`[API] Getting product by ID ${productId} from cached list.`);
-    if (allProducts.length === _mockProducts.length) {
+    if (allProducts.length === 0) {
         console.warn('Product list is empty. Call getProviders first.');
         return undefined;
     }
