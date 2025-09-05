@@ -12,7 +12,7 @@ import type { Borrower } from '@/lib/types';
 import { Loader2 } from 'lucide-react';
 
 const formSchema = z.object({
-  phoneNumber: z.string().min(10, 'Please enter a valid phone number.').max(15, 'Please enter a valid phone number.'),
+  phoneNumber: z.string().min(9, 'Please enter a valid phone number.').max(15, 'Please enter a valid phone number.'),
 });
 
 type AuthViewProps = {
@@ -60,7 +60,7 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
                     <FormItem>
                     <FormLabel>Phone Number</FormLabel>
                     <FormControl>
-                        <Input placeholder="e.g., 1112223333" {...field} />
+                        <Input placeholder="e.g., 912345678" {...field} />
                     </FormControl>
                     <FormMessage />
                     </FormItem>
