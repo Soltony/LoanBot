@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BackButton } from './back-button';
 import { format } from 'date-fns';
+import { RepayLoanDialog } from './repay-loan-dialog';
 
 type ActiveLoansViewProps = {
   borrowerId: string;
@@ -16,16 +17,30 @@ type ActiveLoansViewProps = {
 export function ActiveLoansView({ borrowerId, onBack }: ActiveLoansViewProps) {
   const [loans, setLoans] = React.useState<Loan[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [selectedLoan, setSelectedLoan] = React.useState<Loan | null>(null);
+  const [showRepayDialog, setShowRepayDialog] = React.useState(false);
+
+  const fetchLoans = React.useCallback(async () => {
+    setIsLoading(true);
+    const activeLoans = await getActiveLoans(borrowerId);
+    setLoans(activeLoans);
+    setIsLoading(false);
+  }, [borrowerId]);
 
   React.useEffect(() => {
-    async function fetchLoans() {
-      setIsLoading(true);
-      const activeLoans = await getActiveLoans(borrowerId);
-      setLoans(activeLoans);
-      setIsLoading(false);
-    }
     fetchLoans();
-  }, [borrowerId]);
+  }, [fetchLoans]);
+
+  const handleRepayClick = (loan: Loan) => {
+    setSelectedLoan(loan);
+    setShowRepayDialog(true);
+  };
+  
+  const handleRepaymentSuccess = (updatedLoan: Loan) => {
+    // Re-fetch all loans to get the most up-to-date state
+    fetchLoans();
+    setShowRepayDialog(false);
+  }
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4 py-8 relative">
@@ -42,7 +57,7 @@ export function ActiveLoansView({ borrowerId, onBack }: ActiveLoansViewProps) {
             </div>
         ) : loans.length > 0 ? (
             <div className="space-y-6">
-            {loans.map(loan => (
+            {loans.filter(loan => loan.repaymentStatus === 'Unpaid').map(loan => (
                 <Card key={loan.id} className="overflow-hidden">
                 <CardHeader>
                     <CardTitle>{loan.productName}</CardTitle>
@@ -70,8 +85,7 @@ export function ActiveLoansView({ borrowerId, onBack }: ActiveLoansViewProps) {
                     </div>
                 </CardContent>
                 <CardFooter className="bg-muted/50 px-6 py-4">
-                     <Button>Repay Now</Button>
-                     <p className="text-xs text-muted-foreground ml-4">Repayment functionality is coming soon.</p>
+                     <Button onClick={() => handleRepayClick(loan)}>Repay Now</Button>
                 </CardFooter>
                 </Card>
             ))}
@@ -84,7 +98,15 @@ export function ActiveLoansView({ borrowerId, onBack }: ActiveLoansViewProps) {
                 </CardContent>
             </Card>
         )}
-
+        
+        {selectedLoan && (
+            <RepayLoanDialog 
+                open={showRepayDialog}
+                onOpenChange={setShowRepayDialog}
+                loan={selectedLoan}
+                onSuccess={handleRepaymentSuccess}
+            />
+        )}
     </div>
   );
 }

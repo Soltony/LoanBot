@@ -182,6 +182,15 @@ export const applyForLoan = async (payload: {
     }).then(() => ({ success: true, loanId: `loan-${Date.now()}` })); // Assuming success if API call doesn't throw
 }
 
+export const repayLoan = async (loanId: string, amount: number): Promise<Loan> => {
+    console.log(`[API] Repaying loan ${loanId} with amount ${amount}`);
+    const requestBody = { loanId, amount };
+    return apiCall<Loan>('/payments', {
+        method: 'POST',
+        body: JSON.stringify(requestBody)
+    });
+};
+
 export const getProductById = (productId: string): EligibilityProduct | undefined => {
     console.log(`[API] Getting product by ID ${productId} from cached list.`);
     if (allProducts.length === 0) {
