@@ -1,5 +1,7 @@
 import type { Borrower, Provider, Loan, Transaction, Eligibility, EligibilityProduct } from './types';
 
+// --- MOCK DATABASE ---
+// In a real application, this data would be stored in a database.
 const borrowers: Borrower[] = [
   { id: 'borrower-1', name: 'Alex Doe', phoneNumber: '1112223333' },
   { id: 'borrower-2', name: 'Sam Smith', phoneNumber: '4445556666' },
@@ -66,8 +68,16 @@ const eligibilities: Record<string, Record<string, Eligibility>> = {
         }
     }
 }
+// --- END MOCK DATABASE ---
 
 
+/**
+ * Simulates a network request.
+ * @param data The data to return.
+ * @param delay The delay in milliseconds.
+ * @param fail Whether the request should fail.
+ * @returns A promise that resolves with the data or rejects with an error.
+ */
 const apiCall = <T>(data: T, delay = 500, fail = false): Promise<T> => {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
@@ -80,21 +90,32 @@ const apiCall = <T>(data: T, delay = 500, fail = false): Promise<T> => {
   });
 };
 
+// --- API FUNCTIONS ---
+// Replace the content of these functions with your actual API calls.
+
 export const getBorrowerByPhone = (phoneNumber: string): Promise<Borrower> => {
+  console.log(`[Mock API] Fetching borrower for phone number: ${phoneNumber}`);
+  // ** REPLACE THIS with your actual API call to get a borrower by phone number. **
   const borrower = borrowers.find(b => b.phoneNumber === phoneNumber.replace(/\D/g, ''));
   return apiCall(borrower, 500, !borrower);
 };
 
 export const getProviders = (): Promise<Provider[]> => {
+  console.log('[Mock API] Fetching all providers.');
+  // ** REPLACE THIS with your actual API call to get all providers. **
   return apiCall(providers);
 };
 
 export const getEligibility = (borrowerId: string, providerId: string): Promise<Eligibility> => {
-  const eligibility = eligibilities[borrowerId]?.[providerId];
-  return apiCall(eligibility, 800, !eligibility);
+    console.log(`[Mock API] Fetching eligibility for borrower ${borrowerId} with provider ${providerId}`);
+    // ** REPLACE THIS with your actual API call to get eligibility. **
+    const eligibility = eligibilities[borrowerId]?.[providerId];
+    return apiCall(eligibility, 800, !eligibility);
 };
 
 export const getActiveLoans = (borrowerId: string): Promise<Loan[]> => {
+    console.log(`[Mock API] Fetching active loans for borrower ${borrowerId}`);
+    // ** REPLACE THIS with your actual API call to get active loans. **
     if (borrowerId === 'borrower-1') {
         return apiCall(loans.filter(l => l.repaymentStatus === 'Unpaid'));
     }
@@ -102,6 +123,8 @@ export const getActiveLoans = (borrowerId: string): Promise<Loan[]> => {
 };
 
 export const getTransactions = (borrowerId: string): Promise<Transaction[]> => {
+    console.log(`[Mock API] Fetching transactions for borrower ${borrowerId}`);
+    // ** REPLACE THIS with your actual API call to get transaction history. **
     if (borrowerId === 'borrower-1') {
         return apiCall(transactions.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     }
@@ -113,10 +136,13 @@ export const applyForLoan = (payload: {
   borrowerId: string;
   loanAmount: number;
 }): Promise<{ success: true, loanId: string }> => {
-    console.log('Applying for loan with payload:', payload);
+    console.log('[Mock API] Applying for loan with payload:', payload);
+    // ** REPLACE THIS with your actual API call to apply for a loan. **
     return apiCall({ success: true, loanId: `loan-${Date.now()}` }, 1500);
 }
 
 export const getProductById = (productId: string): EligibilityProduct | undefined => {
+    console.log(`[Mock API] Fetching product by ID ${productId}`);
+    // ** This function might need to fetch from your backend or you can bundle products with eligibility. **
     return allProducts.find(p => p.id === productId);
 }
