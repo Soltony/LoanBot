@@ -130,12 +130,45 @@ export const getEligibility = async (borrowerId: string, providerId: string): Pr
     };
 };
 
-export const getActiveLoans = (borrowerId: string): Promise<Loan[]> => {
+export const getActiveLoans = async (borrowerId: string): Promise<Loan[]> => {
     console.log(`[API] Fetching active loans for borrower ${borrowerId}`);
-    // The API response for get loan history returns 'repaidAmount', but the Loan type expects 'amountRepaid'.
-    // We will alias it here.
-    return apiCall<any[]>(`/ussd/borrowers/${borrowerId}/loans`).then(loans => loans.map(l => ({...l, amountRepaid: l.repaidAmount})));
+    const rawLoans = await apiCall<any[]>(`/ussd/borrowers/${borrowerId}/loans`);
+
+    if (allProducts.length === 0) {
+        await getProviders(); // Ensure products are loaded
+    }
+
+    const loansWithDetails = rawLoans.map(loan => {
+        const productDetails = getProductById(loan.productId);
+        let totalAmountDue = loan.loanAmount;
+
+        if (productDetails) {
+            // Add service fee
+            if (productDetails.serviceFee) {
+                totalAmountDue += productDetails.serviceFee;
+            }
+            // Add daily fee
+            if (productDetails.interestRate && loan.disbursedDate) {
+                const disbursedDate = new Date(loan.disbursedDate);
+                const now = new Date();
+                // Ensure we don't have a negative duration if clocks are off
+                const daysPassed = Math.max(0, Math.floor((now.getTime() - disbursedDate.getTime()) / (1000 * 60 * 60 * 24)));
+                const dailyFee = productDetails.interestRate / 100; // Assuming interestRate is in percent
+                const accruedInterest = loan.loanAmount * dailyFee * daysPassed;
+                totalAmountDue += accruedInterest;
+            }
+        }
+
+        return {
+            ...loan,
+            amountRepaid: loan.repaidAmount,
+            totalAmountDue: totalAmountDue,
+        };
+    });
+
+    return loansWithDetails;
 };
+
 
 export const getTransactions = (borrowerId: string): Promise<Transaction[]> => {
     console.log(`[API] Fetching transactions for borrower ${borrowerId}`);

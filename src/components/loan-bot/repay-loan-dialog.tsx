@@ -24,7 +24,7 @@ export function RepayLoanDialog({ open, onOpenChange, loan, onSuccess }: RepayLo
   const [isSuccess, setIsSuccess] = React.useState(false);
   const { toast } = useToast();
 
-  const outstandingBalance = loan.loanAmount - loan.amountRepaid;
+  const outstandingBalance = loan.totalAmountDue - loan.amountRepaid;
 
   const formSchema = z.object({
     repaymentAmount: z.coerce.number()
@@ -87,7 +87,7 @@ export function RepayLoanDialog({ open, onOpenChange, loan, onSuccess }: RepayLo
                 <DialogHeader>
                     <DialogTitle>Repay {loan.productName}</DialogTitle>
                     <DialogDescription>
-                        Your outstanding balance is ${outstandingBalance.toLocaleString()}.
+                        Your outstanding balance is ${outstandingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">

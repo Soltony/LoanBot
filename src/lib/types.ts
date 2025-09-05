@@ -45,8 +45,10 @@ export interface Loan {
   productName: string;
   productId: string;
   loanAmount: number;
+  totalAmountDue: number; // To hold calculated total including fees
   amountRepaid: number;
   dueDate: string;
+  disbursedDate: string;
   repaymentStatus: 'Paid' | 'Unpaid';
   providerId?: string;
   penaltyAmount?: number;

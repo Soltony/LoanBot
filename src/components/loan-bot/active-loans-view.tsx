@@ -65,8 +65,8 @@ export function ActiveLoansView({ borrowerId, onBack }: ActiveLoansViewProps) {
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                         <div>
-                            <p className="text-muted-foreground">Loan Amount</p>
-                            <p className="font-semibold text-lg">${loan.loanAmount.toLocaleString()}</p>
+                            <p className="text-muted-foreground">Total Due</p>
+                            <p className="font-semibold text-lg">${loan.totalAmountDue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                         </div>
                         <div>
                             <p className="text-muted-foreground">Amount Repaid</p>
@@ -80,7 +80,7 @@ export function ActiveLoansView({ borrowerId, onBack }: ActiveLoansViewProps) {
                     <div className="mt-4">
                         <p className="text-muted-foreground text-sm mb-1">Repayment Progress</p>
                         <div className="w-full bg-muted rounded-full h-2.5">
-                             <div className="bg-primary h-2.5 rounded-full" style={{ width: `${(loan.amountRepaid / loan.loanAmount) * 100}%` }}></div>
+                             <div className="bg-primary h-2.5 rounded-full" style={{ width: `${(loan.amountRepaid / loan.totalAmountDue) * 100}%` }}></div>
                         </div>
                     </div>
                 </CardContent>
