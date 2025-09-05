@@ -1,3 +1,4 @@
+
 'use client';
 import type { Borrower, Provider, Loan, Transaction, Eligibility, EligibilityProduct, ProductDetails } from './types';
 
@@ -137,8 +138,8 @@ export const getActiveLoans = async (borrowerId: string): Promise<Loan[]> => {
 
 export const getTransactions = (borrowerId: string): Promise<Transaction[]> => {
     console.log(`[API] Fetching transactions for borrower ${borrowerId}`);
-    return apiCall<any[]>(`/ussd/borrowers/${borrowerId}/transactions`).then(txns => txns.map(t => ({
-        id: `txn-${t.date}-${t.amount}`,
+    return apiCall<any[]>(`/ussd/borrowers/${borrowerId}/transactions`).then(txns => txns.map((t, index) => ({
+        id: `txn-${t.date}-${t.amount}-${t.description}-${index}`,
         date: new Date(t.date).toISOString(),
         description: t.description,
         amount: t.amount,
