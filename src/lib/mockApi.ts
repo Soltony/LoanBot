@@ -1,10 +1,5 @@
 import type { Borrower, Provider, Loan, Transaction, Eligibility, EligibilityProduct, ProductDetails } from './types';
 
-// The base URL for your loan application backend.
-// For local development, we use a relative path which will be proxied by Next.js.
-// For production, this would be the full URL.
-const API_BASE_URL = '';
-
 // --- MOCK DATABASE for data not provided by the backend API ---
 let allProducts: EligibilityProduct[] = [];
 let allProviders: Provider[] = [];
@@ -18,7 +13,7 @@ let allProviders: Provider[] = [];
  * @returns The JSON response from the API.
  */
 const apiCall = async <T>(endpoint: string, options: RequestInit = {}): Promise<T> => {
-  const url = `${API_BASE_URL}${endpoint}`;
+  const url = `https://nibterasales.nibbank.com.et${endpoint}`;
   try {
     const response = await fetch(url, {
       ...options,
