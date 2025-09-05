@@ -61,6 +61,11 @@ export function EligibilityView({ borrower, onBack }: EligibilityViewProps) {
       onBack();
     }
   };
+  
+  const totalMaxLimit = React.useMemo(() => {
+    if (!eligibility) return 0;
+    return eligibility.products.reduce((acc, product) => acc + product.limit, 0);
+  }, [eligibility]);
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4 py-8 relative">
@@ -92,7 +97,7 @@ export function EligibilityView({ borrower, onBack }: EligibilityViewProps) {
 
       {isLoadingEligibility && (
         <div className="space-y-4 mt-6">
-            <Skeleton className="h-12 w-1/3 mx-auto" />
+            <Skeleton className="h-24 w-full" />
             <Skeleton className="h-40 w-full" />
             <Skeleton className="h-40 w-full" />
         </div>
@@ -101,10 +106,16 @@ export function EligibilityView({ borrower, onBack }: EligibilityViewProps) {
       {eligibility && (
         <>
           <Card className="mb-6 bg-secondary/50">
-            <CardHeader className="text-center">
-              <CardDescription>Your Credit Score</CardDescription>
-              <CardTitle className="text-5xl">{eligibility.creditScore}</CardTitle>
-            </CardHeader>
+             <CardContent className="p-6 grid grid-cols-2 divide-x divide-secondary-foreground/20">
+                <div className="text-center">
+                    <p className="text-sm text-muted-foreground">Total Max Limit</p>
+                    <p className="text-3xl font-bold">${totalMaxLimit.toLocaleString()}</p>
+                </div>
+                <div className="text-center">
+                    <p className="text-sm text-muted-foreground">Available Limit</p>
+                    <p className="text-3xl font-bold">${totalMaxLimit.toLocaleString()}</p>
+                </div>
+             </CardContent>
           </Card>
           
           <h2 className="text-xl font-semibold mb-4 text-center">Available Products</h2>
