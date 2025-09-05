@@ -155,23 +155,12 @@ export const applyForLoan = async (payload: {
 }): Promise<{ success: true, loanId: string }> => {
     console.log('[API] Applying for loan with payload:', payload);
 
-    if (allProducts.length === 0) {
-        await getProviders();
-    }
-    const product = getProductById(payload.productId);
-    if (!product) {
-        return Promise.reject(new Error('Product details not found. Cannot calculate fees or terms.'));
-    }
-
     const requestBody = {
         productId: payload.productId,
         borrowerId: payload.borrowerId,
         loanAmount: payload.loanAmount,
-        serviceFee: product.serviceFee,
-        penaltyAmount: 0,
         disbursedDate: new Date().toISOString(),
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), 
-        repaymentStatus: 'Unpaid'
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     };
     
     return apiCall('/loans', {
