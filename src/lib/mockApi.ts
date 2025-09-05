@@ -49,7 +49,7 @@ const apiCall = async <T>(endpoint: string, options: RequestInit = {}): Promise<
 export const getBorrowerByPhone = async (phoneNumber: string): Promise<Borrower> => {
   console.log(`[API] Fetching borrower for phone number: ${phoneNumber}`);
   // The API returns an array, we expect only one result for a unique phone number.
-  const response = await apiCall<{ id: string, fullName: string, monthlyIncome: number, employmentStatus: string }[]>(`/api/ussd/borrowers?phoneNumber=${phoneNumber}`);
+  const response = await apiCall<{ id: string, fullName: string, monthlyIncome: number, employmentStatus: string }[]>(`ussd/borrowers?phoneNumber=${phoneNumber}`);
   
   const borrowerData = response[0];
   if (!borrowerData) {
@@ -68,7 +68,7 @@ export const getBorrowerByPhone = async (phoneNumber: string): Promise<Borrower>
 
 export const getProviders = async (): Promise<Provider[]> => {
   console.log('[API] Fetching providers from the API.');
-  const providers = await apiCall<Provider[]>('/api/providers');
+  const providers = await apiCall<Provider[]>('/providers');
   // Cache providers and products for other functions to use
   allProviders = providers;
   allProducts = providers.flatMap(p => p.products?.map(prod => ({
@@ -82,7 +82,7 @@ export const getProviders = async (): Promise<Provider[]> => {
 
 export const getEligibility = async (borrowerId: string, providerId: string): Promise<Eligibility> => {
     console.log(`[API] Fetching eligibility for borrower ${borrowerId} with provider ${providerId}`);
-    const eligibilityData = await apiCall<{ score: number, limits: { productId: string, productName: string, limit: number }[] }>(`/api/ussd/borrowers/${borrowerId}/eligibility?providerId=${providerId}`);
+    const eligibilityData = await apiCall<{ score: number, limits: { productId: string, productName: string, limit: number }[] }>(`ussd/borrowers/${borrowerId}/eligibility?providerId=${providerId}`);
 
     // Map the 'limits' from the API to the 'products' the UI expects
     const products: EligibilityProduct[] = eligibilityData.limits.map(limit => {
@@ -106,12 +106,12 @@ export const getActiveLoans = (borrowerId: string): Promise<Loan[]> => {
     console.log(`[API] Fetching active loans for borrower ${borrowerId}`);
     // The API response for get loan history returns 'repaidAmount', but the Loan type expects 'amountRepaid'.
     // We will alias it here.
-    return apiCall<any[]>(`/api/ussd/borrowers/${borrowerId}/loans`).then(loans => loans.map(l => ({...l, amountRepaid: l.repaidAmount})));
+    return apiCall<any[]>(`ussd/borrowers/${borrowerId}/loans`).then(loans => loans.map(l => ({...l, amountRepaid: l.repaidAmount})));
 };
 
 export const getTransactions = (borrowerId: string): Promise<Transaction[]> => {
     console.log(`[API] Fetching transactions for borrower ${borrowerId}`);
-    return apiCall<any[]>(`/api/ussd/borrowers/${borrowerId}/transactions`).then(txns => txns.map(t => ({
+    return apiCall<any[]>(`ussd/borrowers/${borrowerId}/transactions`).then(txns => txns.map(t => ({
         id: `txn-${t.date}-${t.amount}`, // API doesn't provide an ID, so we create one
         date: new Date(t.date).toISOString(),
         description: t.description,
@@ -148,7 +148,7 @@ export const applyForLoan = async (payload: {
         repaymentStatus: 'Unpaid'
     };
     
-    return apiCall('/api/loans', {
+    return apiCall('/loans', {
         method: 'POST',
         body: JSON.stringify(requestBody),
     }).then(() => ({ success: true, loanId: `loan-${Date.now()}` })); // Assuming success if API call doesn't throw
