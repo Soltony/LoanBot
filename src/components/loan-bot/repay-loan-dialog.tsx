@@ -35,7 +35,7 @@ export function RepayLoanDialog({ open, onOpenChange, loan, onSuccess }: RepayLo
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      repaymentAmount: undefined,
+      repaymentAmount: '' as any,
     },
   });
 

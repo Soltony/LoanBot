@@ -33,7 +33,7 @@ export function ApplyLoanDialog({ open, onOpenChange, product, borrower }: Apply
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      loanAmount: undefined,
+      loanAmount: '' as any,
     },
   });
 
