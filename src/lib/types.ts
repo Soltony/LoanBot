@@ -9,14 +9,29 @@ export interface Borrower {
 export interface Provider {
   id: string;
   name: string;
+  icon?: string;
+  colorHex?: string;
+  products?: ProductDetails[];
 }
 
+export interface ProductDetails {
+  id: string;
+  providerId: string;
+  name: string;
+  description?: string;
+  minLoan?: number;
+  maxLoan?: number;
+  serviceFee?: { type: string; value: number };
+  dailyFee?: { type: string; value: number; calculationBase: string };
+}
+
+// This is a consolidated/simplified type for UI components
 export interface EligibilityProduct {
   id: string;
   name: string;
   limit: number;
-  interestRate: number;
-  serviceFee: number; // as a percentage
+  interestRate: number; // This can be derived from dailyFee for display
+  serviceFee: number; // This can be derived from serviceFee.value for calculation
 }
 
 export interface Eligibility {
@@ -33,8 +48,8 @@ export interface Loan {
   amountRepaid: number;
   dueDate: string;
   repaymentStatus: 'Paid' | 'Unpaid';
-  providerId?: string; // from API
-  penaltyAmount?: number; // from API
+  providerId?: string;
+  penaltyAmount?: number;
 }
 
 export interface Transaction {

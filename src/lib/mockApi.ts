@@ -4,17 +4,9 @@ import type { Borrower, Provider, Loan, Transaction, Eligibility, EligibilityPro
 const API_BASE_URL = 'https://nibterasales.nibbank.com.et';
 
 // --- MOCK DATABASE for data not provided by the backend API ---
-const providers: Provider[] = [
-  { id: 'provider-1', name: 'Capital Flow' },
-  { id: 'provider-2', name: 'Quick-Lend Inc.' },
-  { id: 'provider-3', name: 'Evergreen Finance' },
-];
+let allProducts: EligibilityProduct[] = [];
+let allProviders: Provider[] = [];
 
-const allProducts: EligibilityProduct[] = [
-    { id: 'prod_1', name: 'Personal Loan', limit: 0, interestRate: 5, serviceFee: 2.5 },
-    { id: 'prod_2', name: 'Emergency Loan', limit: 0, interestRate: 8, serviceFee: 3 },
-    // Add other products from your system here.
-]
 // --- END MOCK DATABASE ---
 
 /**
@@ -54,9 +46,9 @@ const apiCall = async <T>(endpoint: string, options: RequestInit = {}): Promise<
 
 export const getBorrowerByPhone = async (phoneNumber: string): Promise<Borrower> => {
   console.log(`[API] Fetching borrower for phone number: ${phoneNumber}`);
+  // The API returns an array, we expect only one result for a unique phone number.
   const response = await apiCall<{ id: string, fullName: string, monthlyIncome: number, employmentStatus: string }[]>(`/api/ussd/borrowers?phoneNumber=${phoneNumber}`);
   
-  // The API returns an array, we'll take the first result.
   const borrowerData = response[0];
   if (!borrowerData) {
       throw new Error('Borrower not found');
@@ -66,16 +58,24 @@ export const getBorrowerByPhone = async (phoneNumber: string): Promise<Borrower>
   return {
     id: borrowerData.id,
     name: borrowerData.fullName,
-    phoneNumber: phoneNumber, // The API doesn't return this, so we keep it from the input
+    phoneNumber: phoneNumber,
     monthlyIncome: borrowerData.monthlyIncome,
     employmentStatus: borrowerData.employmentStatus,
   };
 };
 
-export const getProviders = (): Promise<Provider[]> => {
-  console.log('[API] Using mock provider list.');
-  // Your API spec doesn't include an endpoint for providers, so we'll use a mock list.
-  return Promise.resolve(providers);
+export const getProviders = async (): Promise<Provider[]> => {
+  console.log('[API] Fetching providers from the API.');
+  const providers = await apiCall<Provider[]>('/api/providers');
+  // Cache providers and products for other functions to use
+  allProviders = providers;
+  allProducts = providers.flatMap(p => p.products?.map(prod => ({
+      ...prod,
+      interestRate: prod.dailyFee?.value || 0, // Using dailyFee as interestRate
+      limit: prod.maxLoan || 0,
+      serviceFee: prod.serviceFee?.value || 0,
+  })) || []);
+  return providers;
 };
 
 export const getEligibility = async (borrowerId: string, providerId: string): Promise<Eligibility> => {
@@ -84,14 +84,13 @@ export const getEligibility = async (borrowerId: string, providerId: string): Pr
 
     // Map the 'limits' from the API to the 'products' the UI expects
     const products: EligibilityProduct[] = eligibilityData.limits.map(limit => {
-        // We get some product details from the static list for now.
-        const baseProduct = getProductById(limit.productId) || { interestRate: 0, serviceFee: 0 };
+        const baseProduct = getProductById(limit.productId);
         return {
             id: limit.productId,
             name: limit.productName,
             limit: limit.limit,
-            interestRate: baseProduct.interestRate,
-            serviceFee: baseProduct.serviceFee,
+            interestRate: baseProduct?.interestRate || 0,
+            serviceFee: baseProduct?.serviceFee || 0,
         };
     });
 
@@ -102,44 +101,47 @@ export const getEligibility = async (borrowerId: string, providerId: string): Pr
 };
 
 export const getActiveLoans = (borrowerId: string): Promise<Loan[]> => {
-    console.log(`[API] Fetching loans for borrower ${borrowerId}`);
-    return apiCall(`/api/ussd/borrowers/${borrowerId}/loans`);
+    console.log(`[API] Fetching active loans for borrower ${borrowerId}`);
+    // The API response for get loan history returns 'repaidAmount', but the Loan type expects 'amountRepaid'.
+    // We will alias it here.
+    return apiCall<any[]>(`/api/ussd/borrowers/${borrowerId}/loans`).then(loans => loans.map(l => ({...l, amountRepaid: l.repaidAmount})));
 };
 
 export const getTransactions = (borrowerId: string): Promise<Transaction[]> => {
     console.log(`[API] Fetching transactions for borrower ${borrowerId}`);
-    const transactions = apiCall<any[]>(`/api/ussd/borrowers/${borrowerId}/transactions`);
-
-    // Map API response to our Transaction type
-    return transactions.then(txns => txns.map(t => ({
+    return apiCall<any[]>(`/api/ussd/borrowers/${borrowerId}/transactions`).then(txns => txns.map(t => ({
         id: `txn-${t.date}-${t.amount}`, // API doesn't provide an ID, so we create one
         date: new Date(t.date).toISOString(),
         description: t.description,
         amount: t.amount,
-        type: t.amount >= 0 ? 'Debit' : 'Credit',
-    })))
+        type: t.amount >= 0 ? 'Debit' : 'Credit', // Assuming positive is Debit (disbursement)
+    })));
 };
 
-export const applyForLoan = (payload: {
+export const applyForLoan = async (payload: {
   productId: string;
   borrowerId: string;
   loanAmount: number;
 }): Promise<{ success: true, loanId: string }> => {
     console.log('[API] Applying for loan with payload:', payload);
 
+    if (allProducts.length === 0) {
+        // Ensure products are loaded if they haven't been already
+        await getProviders();
+    }
     const product = getProductById(payload.productId);
     if (!product) {
-        return Promise.reject(new Error('Product details not found.'));
+        return Promise.reject(new Error('Product details not found. Cannot calculate fees or terms.'));
     }
 
     const requestBody = {
         productId: payload.productId,
         borrowerId: payload.borrowerId,
         loanAmount: payload.loanAmount,
-        serviceFee: product.serviceFee,
+        serviceFee: product.serviceFee, // This now comes from the product details
         penaltyAmount: 0,
         disbursedDate: new Date().toISOString(),
-        // Assuming a 30-day loan term. Adjust as needed.
+        // Assuming a 30-day loan term. Your API may require a different calculation.
         dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), 
         repaymentStatus: 'Unpaid'
     };
@@ -151,8 +153,10 @@ export const applyForLoan = (payload: {
 }
 
 export const getProductById = (productId: string): EligibilityProduct | undefined => {
-    console.log(`[API] Fetching mock product by ID ${productId}`);
-    // This function uses the local mock list. 
-    // In a real app, you might have an endpoint to fetch full product details.
+    console.log(`[API] Getting product by ID ${productId} from cached list.`);
+    if (allProducts.length === 0) {
+        console.warn('Product list is empty. Call getProviders first.');
+        return undefined;
+    }
     return allProducts.find(p => p.id === productId);
 }
