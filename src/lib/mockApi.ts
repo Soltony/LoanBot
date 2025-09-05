@@ -1,3 +1,4 @@
+'use client';
 import type { Borrower, Provider, Loan, Transaction, Eligibility, EligibilityProduct, ProductDetails } from './types';
 
 // The base URL for your loan application backend.
@@ -34,7 +35,11 @@ const apiCall = async <T>(endpoint: string, options: RequestInit = {}): Promise<
 
     // Handle cases where the response might be empty
     const text = await response.text();
-    return text ? (JSON.parse(text) as T) : ({} as T);
+    if (!text) {
+        return {} as T;
+    }
+    console.log('[API] Raw text response:', text);
+    return JSON.parse(text) as T;
   } catch (error) {
     console.error(`Fetch error for endpoint ${endpoint}:`, error);
     throw error;
@@ -47,27 +52,43 @@ const apiCall = async <T>(endpoint: string, options: RequestInit = {}): Promise<
 export const getBorrowerByPhone = async (phoneNumber: string): Promise<Borrower> => {
   console.log(`[API] Original phone number: ${phoneNumber}`);
   const formattedPhoneNumber = phoneNumber.slice(-9);
-  console.log(`[API] Formatted phone number: ${formattedPhoneNumber}`);
+  console.log(`[API] Formatted phone number for API call: ${formattedPhoneNumber}`);
 
   // This endpoint returns a unique structure that needs special handling.
-  const response = await apiCall<{ borrowerId: string; provisionedData: { data: string }[] }>(`/api/ussd/borrowers?phoneNumber=${formattedPhoneNumber}`);
+  try {
+    const response = await apiCall<{ borrowerId: string; provisionedData: { data: string }[] }>(`/api/ussd/borrowers?phoneNumber=${formattedPhoneNumber}`);
+    
+    console.log('[API] Full response received for borrower:', response);
 
-  if (!response || !response.provisionedData || response.provisionedData.length === 0) {
-    throw new Error('Borrower not found or provisioned data is missing.');
+    if (!response || !response.provisionedData || response.provisionedData.length === 0) {
+        console.error('[API] Borrower not found or provisionedData is missing/empty in the response.');
+        throw new Error('Borrower not found or provisioned data is missing.');
+    }
+
+    // The actual borrower data is in a nested, stringified JSON object.
+    const provisionedDataString = response.provisionedData[0].data;
+    console.log('[API] Provisioned data string:', provisionedDataString);
+    
+    const provisionedData = JSON.parse(provisionedDataString);
+    console.log('[API] Parsed provisioned data:', provisionedData);
+
+
+    // Map the parsed data to our app's Borrower type.
+    const borrower: Borrower = {
+        id: response.borrowerId,
+        name: provisionedData.name, // 'name' from the nested JSON
+        phoneNumber: phoneNumber, // Keep original for display/state
+        monthlyIncome: provisionedData.salary, // 'salary' from the nested JSON
+        employmentStatus: 'Employed', // Assuming a default value
+    };
+
+    console.log('[API] Successfully mapped to Borrower object:', borrower);
+    return borrower;
+
+  } catch(err) {
+      console.error('[API] Error in getBorrowerByPhone:', err);
+      throw err; // Re-throw the error to be caught by the UI
   }
-
-  // The actual borrower data is in a nested, stringified JSON object.
-  const provisionedDataString = response.provisionedData[0].data;
-  const provisionedData = JSON.parse(provisionedDataString);
-
-  // Map the parsed data to our app's Borrower type.
-  return {
-    id: response.borrowerId,
-    name: provisionedData.name, // 'name' from the nested JSON
-    phoneNumber: phoneNumber, // Keep original for display/state
-    monthlyIncome: provisionedData.salary, // 'salary' from the nested JSON
-    employmentStatus: 'Employed', // Assuming a default value
-  };
 };
 
 
@@ -161,7 +182,7 @@ export const applyForLoan = async (payload: {
 
 export const getProductById = (productId: string): EligibilityProduct | undefined => {
     console.log(`[API] Getting product by ID ${productId} from cached list.`);
-    if (allProducts.length === 0) {
+    if (allProducts.length === _mockProducts.length) {
         console.warn('Product list is empty. Call getProviders first.');
         return undefined;
     }
