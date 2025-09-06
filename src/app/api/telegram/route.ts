@@ -1,10 +1,11 @@
 
 import {NextRequest, NextResponse} from 'next/server';
 import TelegramBot from 'node-telegram-bot-api';
-import { getBorrowerByPhone, getActiveLoans, getProviders, getEligibility, getTransactions } from '@/lib/mockApi';
+import { getBorrowerByPhone, getActiveLoans, getProviders, getEligibility, getTransactions, applyForLoan } from '@/lib/mockApi';
 
 let botInstance: TelegramBot | null = null;
-const userState = new Map<number, string>();
+const userState = new Map<number, {state: string, borrowerId?: string, productId?: string}>();
+
 
 const initializeBot = () => {
     if (botInstance) {
@@ -37,22 +38,19 @@ const initializeBot = () => {
         });
 
         bot.on('message', (msg) => {
-            // Ignore commands, which are handled by onText
-            if (msg.text?.startsWith('/')) {
-                 if (!msg.text.startsWith('/start')) {
-                    // It's a command-like message, likely a phone number check
-                    const chatId = msg.chat.id;
-                    if (userState.get(chatId) === 'awaiting_phone') {
-                        handleCheck(bot, chatId, msg.text || '');
-                    }
-                 }
-                 return;
-            }
-            
             const chatId = msg.chat.id;
-            console.log(`Received message from chat ID: ${chatId}. Current state: ${userState.get(chatId)}`);
-            if (userState.get(chatId) === 'awaiting_phone') {
+            const currentState = userState.get(chatId);
+
+            // If the message is a command, let the onText handlers deal with it.
+            if (msg.text?.startsWith('/')) {
+                return;
+            }
+
+            console.log(`Received message from chat ID: ${chatId}. Current state: ${currentState?.state}`);
+            if (currentState?.state === 'awaiting_phone') {
                 handleCheck(bot, chatId, msg.text || '');
+            } else if (currentState?.state === 'awaiting_loan_amount') {
+                handleLoanAmount(bot, chatId, msg.text || '');
             }
         });
 
@@ -75,7 +73,7 @@ async function handleStart(bot: TelegramBot, chatId: number) {
     const welcomeMessage = `Welcome to LoanBot! 🏦
 
 To get started, please send me your 9-digit phone number registered with the bank.`;
-    userState.set(chatId, 'awaiting_phone');
+    userState.set(chatId, {state: 'awaiting_phone'});
     await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
 }
 
@@ -90,7 +88,7 @@ async function handleCheck(bot: TelegramBot, chatId: number, messageText: string
 
     try {
         const borrower = await getBorrowerByPhone(phoneNumber);
-        userState.delete(chatId);
+        userState.set(chatId, { state: 'authenticated', borrowerId: borrower.id });
         
         const welcomeMessage = `Hello, *${borrower.name}*! What would you like to do today?`;
         const opts = {
@@ -125,11 +123,32 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
         case 'provider':
              await handleProviderSelection(bot, chatId, args[0], args[1]);
             break;
+        case 'apply':
+            // args are [borrowerId, productId]
+            await handleApply(bot, chatId, args[0], args[1]);
+            break;
         case 'active_loans':
             await handleActiveLoans(bot, chatId, args[0]);
             break;
         case 'history':
             await handleHistory(bot, chatId, args[0]);
+            break;
+        case 'main_menu':
+            const currentState = userState.get(chatId);
+            if (currentState?.borrowerId) {
+                 const borrower = await getBorrowerByPhone(currentState.borrowerId); // Fetch full borrower details if needed, or just use ID
+                 const welcomeMessage = `What else would you like to do today?`;
+                    const opts = {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{ text: 'Check Loan Eligibility', callback_data: `eligibility_${currentState.borrowerId}` }],
+                                [{ text: 'View My Active Loans', callback_data: `active_loans_${currentState.borrowerId}` }],
+                                [{ text: 'My Loan History', callback_data: `history_${currentState.borrowerId}` }],
+                            ]
+                        }
+                    };
+                await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown', ...opts });
+            }
             break;
     }
 }
@@ -137,9 +156,11 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
 async function handleEligibility(bot: TelegramBot, chatId: number, borrowerId: string) {
     try {
         const providers = await getProviders();
+        const keyboard = providers.map(p => ([{ text: p.name, callback_data: `provider_${borrowerId}_${p.id}` }]));
+        keyboard.push([{ text: '« Back to Main Menu', callback_data: `main_menu` }]);
         const opts = {
             reply_markup: {
-                inline_keyboard: providers.map(p => ([{ text: p.name, callback_data: `provider_${borrowerId}_${p.id}` }]))
+                inline_keyboard: keyboard
             }
         };
         await bot.sendMessage(chatId, 'Please select a loan provider to check your eligibility:', opts);
@@ -152,10 +173,15 @@ async function handleProviderSelection(bot: TelegramBot, chatId: number, borrowe
     try {
         const eligibility = await getEligibility(borrowerId, providerId);
         let responseText = `*Your Eligibility Results:*\n\n`;
+        
+        const keyboard = [];
 
         if (eligibility.products.length > 0) {
             eligibility.products.forEach(p => {
                 responseText += `*${p.name}*\nLimit: *${p.limit.toLocaleString()} ETB*\nInterest: ${p.interestRate}%\n\n`;
+                if(p.limit > 0){
+                    keyboard.push([{ text: `Apply for ${p.name}`, callback_data: `apply_${borrowerId}_${p.id}` }]);
+                }
             });
         } else {
             responseText += 'You are not eligible for any products at this time.';
@@ -163,9 +189,51 @@ async function handleProviderSelection(bot: TelegramBot, chatId: number, borrowe
                 responseText += `\nReason: ${eligibility.reason}`;
             }
         }
-        await bot.sendMessage(chatId, responseText, { parse_mode: 'Markdown' });
+
+        keyboard.push([{ text: '« Back to Providers', callback_data: `eligibility_${borrowerId}` }]);
+
+        const opts = {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: keyboard
+            }
+        };
+        await bot.sendMessage(chatId, responseText, opts);
     } catch (error) {
         await bot.sendMessage(chatId, 'Sorry, could not fetch your eligibility at this moment.');
+    }
+}
+
+async function handleApply(bot: TelegramBot, chatId: number, borrowerId: string, productId: string) {
+    userState.set(chatId, { state: 'awaiting_loan_amount', borrowerId, productId });
+    await bot.sendMessage(chatId, 'Please enter the amount you would like to borrow:');
+}
+
+async function handleLoanAmount(bot: TelegramBot, chatId: number, amountText: string) {
+    const currentState = userState.get(chatId);
+    if (!currentState || !currentState.borrowerId || !currentState.productId) {
+        await bot.sendMessage(chatId, 'Something went wrong. Please start over with /start.');
+        return;
+    }
+
+    const amount = parseFloat(amountText.replace(/,/g, ''));
+    if (isNaN(amount) || amount <= 0) {
+        await bot.sendMessage(chatId, 'Please enter a valid number for the loan amount.');
+        return;
+    }
+
+    try {
+        await applyForLoan({
+            borrowerId: currentState.borrowerId,
+            productId: currentState.productId,
+            loanAmount: amount,
+        });
+        await bot.sendMessage(chatId, `Congratulations! Your loan request for *${amount.toLocaleString()} ETB* has been approved and disbursed. 🎉`, { parse_mode: 'Markdown'});
+        userState.set(chatId, { state: 'authenticated', borrowerId: currentState.borrowerId }); // Reset state
+    } catch (error: any) {
+        const errorMessage = error.message || 'An unknown error occurred.';
+        await bot.sendMessage(chatId, `Sorry, your loan application could not be processed.\nReason: ${errorMessage}`);
+        userState.set(chatId, { state: 'authenticated', borrowerId: currentState.borrowerId }); // Reset state
     }
 }
 
