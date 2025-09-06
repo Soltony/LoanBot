@@ -1,10 +1,10 @@
 
 import {NextRequest, NextResponse} from 'next/server';
 import TelegramBot from 'node-telegram-bot-api';
-import { getBorrowerByPhoneForBot, getActiveLoansForBot, getProvidersForBot, getEligibilityForBot, getTransactionsForBot, applyForLoanForBot } from '@/lib/mockApi';
+import { getBorrowerByPhoneForBot, getActiveLoansForBot, getProvidersForBot, getEligibilityForBot, getTransactionsForBot, applyForLoanForBot, repayLoanForBot } from '@/lib/mockApi';
 
 let botInstance: TelegramBot | null = null;
-const userState = new Map<number, {state: string, borrowerId?: string, productId?: string}>();
+const userState = new Map<number, {state: string, borrowerId?: string, productId?: string, loanId?: string}>();
 
 
 const initializeBot = () => {
@@ -50,6 +50,8 @@ const initializeBot = () => {
                 handleCheck(bot, chatId, msg.text || '');
             } else if (currentState?.state === 'awaiting_loan_amount') {
                 handleLoanAmount(bot, chatId, msg.text || '');
+            } else if (currentState?.state === 'awaiting_repayment_amount') {
+                handleRepaymentAmount(bot, chatId, msg.text || '');
             }
         });
 
@@ -121,20 +123,17 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
     const data = callbackQuery.data;
     const parts = data.split('_');
     
-    // Improved action/args parsing
     let action: string;
     let args: string[] = [];
-
-    // Check if the last part is a borrower ID (assuming it's a long string or number)
-    // A simple heuristic: check if it looks like an ID. This might need refinement.
+    
     const potentialId = parts[parts.length - 1];
     const isIdPresent = parts.length > 1 && (potentialId.length > 10 || !isNaN(parseInt(potentialId)));
 
     if (isIdPresent) {
         action = parts.slice(0, -1).join('_');
-        args = [potentialId];
+        args = parts.slice(parts.length - (parts.length - (action.split('_').length)));
     } else {
-        action = data; // The whole string is the action, e.g., 'main_menu'
+        action = data;
     }
     
     await bot.answerCallbackQuery(callbackQuery.id);
@@ -151,6 +150,9 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
             break;
         case 'apply':
             await handleApply(bot, chatId, args[0], args[1]);
+            break;
+        case 'repay':
+            await handleRepay(bot, chatId, args[0], args[1]);
             break;
         case 'active_loans':
             if (!currentState?.borrowerId) {
@@ -279,6 +281,44 @@ async function handleLoanAmount(bot: TelegramBot, chatId: number, amountText: st
         userState.set(chatId, { state: 'authenticated', borrowerId: currentState.borrowerId });
     }
     
+    const opts = {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '« Back to Main Menu', callback_data: 'main_menu' }]
+            ]
+        }
+    };
+    await bot.sendMessage(chatId, 'You can now go back to the main menu.', opts);
+}
+
+async function handleRepay(bot: TelegramBot, chatId: number, borrowerId: string, loanId: string) {
+    userState.set(chatId, { state: 'awaiting_repayment_amount', borrowerId, loanId });
+    await bot.sendMessage(chatId, 'Please enter the amount you would like to repay:');
+}
+
+async function handleRepaymentAmount(bot: TelegramBot, chatId: number, amountText: string) {
+    const currentState = userState.get(chatId);
+    if (!currentState || !currentState.borrowerId || !currentState.loanId) {
+        await bot.sendMessage(chatId, 'Something went wrong with your session. Please start over with /start.');
+        return;
+    }
+
+    const amount = parseFloat(amountText.replace(/,/g, ''));
+    if (isNaN(amount) || amount <= 0) {
+        await bot.sendMessage(chatId, 'Please enter a valid number for the repayment amount.');
+        return;
+    }
+    
+    try {
+        await repayLoanForBot(currentState.loanId, amount);
+        await bot.sendMessage(chatId, `✅ Thank you! Your payment of *${amount.toLocaleString()} ETB* was successful.`, { parse_mode: 'Markdown'});
+        userState.set(chatId, { state: 'authenticated', borrowerId: currentState.borrowerId });
+    } catch (error: any) {
+        const errorMessage = error.message || 'An unknown error occurred.';
+        await bot.sendMessage(chatId, `⚠️ Sorry, your repayment could not be processed.\nReason: ${errorMessage}`);
+        userState.set(chatId, { state: 'authenticated', borrowerId: currentState.borrowerId });
+    }
+    
     // Always show the main menu afterwards
     const opts = {
         reply_markup: {
@@ -300,36 +340,53 @@ async function handleActiveLoans(bot: TelegramBot, chatId: number, borrowerId: s
         const unpaidLoans = loans.filter(loan => loan.repaymentStatus === 'Unpaid');
         console.log('[BOT LOG] Filtered unpaid loans:', JSON.stringify(unpaidLoans, null, 2));
 
-
-        let responseText: string;
         if (unpaidLoans.length > 0) {
-            responseText = '*Your Active Loans:*\n\n';
-            unpaidLoans.forEach(loan => {
+            await bot.sendMessage(chatId, '*Your Active Loans:*', { parse_mode: 'Markdown' });
+            
+            for (const loan of unpaidLoans) {
                 const dueDate = new Date(loan.dueDate).toLocaleDateString('en-GB');
                 const totalDue = loan.totalRepayableAmount || (loan.loanAmount + (loan.serviceFee || 0));
                 const repaid = loan.amountRepaid || 0;
                 
-                responseText += `*${loan.productName}*\n`;
+                let responseText = `*${loan.productName}*\n`;
                 responseText += `Total Due: *${totalDue.toLocaleString('en-US', { style: 'currency', currency: 'ETB' })}*\n`;
                 responseText += `Amount Repaid: ${repaid.toLocaleString('en-US', { style: 'currency', currency: 'ETB' })}\n`;
-                responseText += `Due Date: ${dueDate}\n\n`;
-            });
+                responseText += `Due Date: ${dueDate}`;
+                
+                const opts = {
+                    parse_mode: 'Markdown' as const,
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: `Repay ${loan.productName}`, callback_data: `repay_${borrowerId}_${loan.id}` }]
+                        ]
+                    }
+                };
+                await bot.sendMessage(chatId, responseText, opts);
+            }
+            
+            const menuOpts = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '« Back to Main Menu', callback_data: `main_menu` }]
+                    ]
+                }
+            };
+            await bot.sendMessage(chatId, 'Select a loan to repay or go back to the menu.', menuOpts);
+
         } else {
-             responseText = 'You have no active unpaid loans at the moment. All previous loans have been settled. 🎉';
+            const responseText = 'You have no active unpaid loans at the moment. All previous loans have been settled. 🎉';
+            console.log(`[BOT LOG] Final response text to be sent: "${responseText}"`);
+            const opts = {
+                parse_mode: 'Markdown' as const,
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '« Back to Main Menu', callback_data: `main_menu` }]
+                    ]
+                }
+            };
+            await bot.sendMessage(chatId, responseText, opts);
         }
         
-        console.log(`[BOT LOG] Final response text to be sent: "${responseText}"`);
-        
-        const opts = {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '« Back to Main Menu', callback_data: `main_menu` }]
-                ]
-            }
-        };
-        await bot.sendMessage(chatId, responseText, opts);
-
     } catch (error) {
         console.error("[BOT ERROR] In handleActiveLoans:", error);
         const opts = {

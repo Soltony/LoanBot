@@ -325,6 +325,15 @@ export const applyForLoanForBot = async (payload: {
     }).then(() => ({ success: true, loanId: `loan-${Date.now()}` }));
 }
 
+export const repayLoanForBot = async (loanId: string, amount: number): Promise<Loan> => {
+    console.log(`[API-BOT] Repaying loan ${loanId} with amount ${amount}`);
+    const requestBody = { loanId, amount };
+    return externalApiCall<Loan>('/payments', {
+        method: 'POST',
+        body: JSON.stringify(requestBody)
+    });
+};
+
 
 // --- SHARED HELPER FUNCTIONS ---
 
