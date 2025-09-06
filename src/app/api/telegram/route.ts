@@ -5,24 +5,39 @@ import { getBorrowerByPhone, getActiveLoans, getProviders, getEligibility, getTr
 
 let botInstance: TelegramBot | null = null;
 
+// A simple in-memory store to track user states
+const userState = new Map<number, string>();
+
 const initializeBot = () => {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) {
-        throw new Error('TELEGRAM_BOT_TOKEN is not set.');
+        throw new Error('TELEGRAM_BOT_TOKEN is not set in .env file.');
     }
 
     if (botInstance) {
         return botInstance;
     }
-
-    // Use long polling instead of webhooks for local development
+    
+    console.log("Initializing Telegram bot with long polling...");
     const bot = new TelegramBot(token, { polling: true });
     botInstance = bot;
 
-    console.log("Telegram bot initialized with long polling.");
+    bot.onText(/\/start/, (msg) => {
+        handleStart(bot, msg.chat.id);
+    });
 
-    bot.onText(/\/start/, (msg) => handleStart(bot, msg.chat.id));
+    // This handles messages that are not commands
+    bot.on('message', (msg) => {
+        // Ignore commands that are handled by other listeners
+        if (msg.text?.startsWith('/')) return;
 
+        const chatId = msg.chat.id;
+        // Check if we are expecting a phone number from this user
+        if (userState.get(chatId) === 'awaiting_phone') {
+            handleCheck(bot, chatId, msg.text || '');
+        }
+    });
+    
     bot.onText(/\/check (.+)/, (msg, match) => {
         const chatId = msg.chat.id;
         const phoneNumber = match ? match[1] : '';
@@ -38,6 +53,8 @@ const initializeBot = () => {
     bot.on('webhook_error', (error) => {
         console.error('Webhook error:', error.message);
     });
+    
+    console.log("Telegram bot successfully initialized.");
 
     return bot;
 };
@@ -46,22 +63,26 @@ const initializeBot = () => {
 async function handleStart(bot: TelegramBot, chatId: number) {
     const welcomeMessage = `Welcome to LoanBot! 🏦
 
-To get started, please use the /check command with your registered phone number.
+To get started, please send me your 9-digit phone number registered with the bank.`;
 
-Example: \`/check 912345678\``;
+    // Set the state for this user to indicate we're waiting for their phone number
+    userState.set(chatId, 'awaiting_phone');
 
     await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
 }
 
 async function handleCheck(bot: TelegramBot, chatId: number, phoneNumber: string) {
     if (!phoneNumber) {
-        await bot.sendMessage(chatId, 'Please provide your phone number. Example: `/check 912345678`', { parse_mode: 'Markdown' });
+        await bot.sendMessage(chatId, 'Please provide your phone number. Example: `912345678`', { parse_mode: 'Markdown' });
         return;
     }
 
     try {
         const borrower = await getBorrowerByPhone(phoneNumber);
-        const welcomeMessage = `Hello, ${borrower.name}! What would you like to do today?`;
+        // Clear the user's state since we've received the phone number
+        userState.delete(chatId);
+        
+        const welcomeMessage = `Hello, *${borrower.name}*! What would you like to do today?`;
 
         const opts = {
             reply_markup: {
@@ -73,10 +94,10 @@ async function handleCheck(bot: TelegramBot, chatId: number, phoneNumber: string
             }
         };
 
-        await bot.sendMessage(chatId, welcomeMessage, opts);
+        await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown', ...opts });
 
     } catch (error) {
-        await bot.sendMessage(chatId, `Sorry, the phone number ${phoneNumber} is not registered. Please check the number and try again.`);
+        await bot.sendMessage(chatId, `Sorry, the phone number *${phoneNumber}* is not registered. Please check the number and try again.`, { parse_mode: 'Markdown' });
     }
 }
 
@@ -126,7 +147,7 @@ async function handleProviderSelection(bot: TelegramBot, chatId: number, borrowe
 
         if (eligibility.products.length > 0) {
             eligibility.products.forEach(p => {
-                responseText += `*${p.name}*\nLimit: *${p.limit.toLocaleString()}*\nInterest: ${p.interestRate}%\n\n`;
+                responseText += `*${p.name}*\nLimit: *${p.limit.toLocaleString()} ETB*\nInterest: ${p.interestRate}%\n\n`;
             });
         } else {
             responseText += 'You are not eligible for any products at this time.';
@@ -200,5 +221,3 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     return NextResponse.json({status: 'ok', message: 'POST endpoint is not used for polling.'});
 }
-
-    
