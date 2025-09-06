@@ -242,9 +242,14 @@ async function handleLoanAmount(bot: TelegramBot, chatId: number, amountText: st
 
 
 async function handleActiveLoans(bot: TelegramBot, chatId: number, borrowerId: string) {
+    console.log(`[BOT LOG] Entering handleActiveLoans for borrowerId: ${borrowerId}`);
     try {
         const loans = await getActiveLoansForBot(borrowerId);
+        console.log('[BOT LOG] Raw loans received from API:', JSON.stringify(loans, null, 2));
+
         const unpaidLoans = loans.filter(loan => loan.repaymentStatus === 'Unpaid');
+        console.log('[BOT LOG] Filtered unpaid loans:', JSON.stringify(unpaidLoans, null, 2));
+
 
         let responseText: string;
         if (unpaidLoans.length > 0) {
@@ -262,6 +267,8 @@ async function handleActiveLoans(bot: TelegramBot, chatId: number, borrowerId: s
         } else {
              responseText = 'You have no active unpaid loans at the moment. All previous loans have been settled. 🎉';
         }
+        
+        console.log(`[BOT LOG] Final response text to be sent: "${responseText}"`);
         
         const opts = {
             parse_mode: 'Markdown',
@@ -320,3 +327,5 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({status: 'error', message: 'Bot initialization failed. Check server logs.'}, { status: 500 });
     }
 }
+
+    
