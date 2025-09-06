@@ -28,9 +28,15 @@ const apiCall = async <T>(endpoint: string, options: RequestInit = {}): Promise<
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`API Error: ${response.status} ${response.statusText}`, errorText);
-      throw new Error(`Request failed: ${response.status}`);
+      const errorBody = await response.text();
+      console.error(`API Error on ${url}: ${response.status} ${response.statusText}`, errorBody);
+      // Try to parse error for a more specific message
+      try {
+        const errorJson = JSON.parse(errorBody);
+        throw new Error(errorJson.message || `Request failed: ${response.status}`);
+      } catch (e) {
+         throw new Error(errorBody || `Request failed: ${response.status}`);
+      }
     }
 
     const text = await response.text();
@@ -47,25 +53,22 @@ const apiCall = async <T>(endpoint: string, options: RequestInit = {}): Promise<
 
 // --- API FUNCTIONS ---
 
+// This version is for the WEBSITE (client-side)
 export const getBorrowerByPhone = async (phoneNumber: string): Promise<Borrower> => {
-  console.log(`[API] Looking up borrower with phone number: ${phoneNumber}`);
+  console.log(`[API-WEB] Looking up borrower with phone number: ${phoneNumber}`);
   
   try {
-    // CORRECTED: The phone number should be a path parameter, not a query parameter.
-    const response = await apiCall<{ borrowerId: string; provisionedData: { data: string }[] }>(`/ussd/borrowers/${phoneNumber}`);
+    const response = await apiCall<{ borrowerId: string; provisionedData: { data: string }[] }>(`/ussd/borrowers?phoneNumber=${phoneNumber}`);
     
-    console.log('[API] Full response received for borrower:', response);
+    console.log('[API-WEB] Full response received for borrower:', response);
 
     if (!response || !response.provisionedData || response.provisionedData.length === 0) {
-        console.error('[API] Borrower not found or provisionedData is missing/empty in the response.');
+        console.error('[API-WEB] Borrower not found or provisionedData is missing/empty in the response.');
         throw new Error('Borrower not found or provisioned data is missing.');
     }
 
     const provisionedDataString = response.provisionedData[0].data;
-    console.log('[API] Provisioned data string:', provisionedDataString);
-    
     const provisionedData = JSON.parse(provisionedDataString);
-    console.log('[API] Parsed provisioned data:', provisionedData);
 
     const borrower: Borrower = {
         id: response.borrowerId,
@@ -75,14 +78,48 @@ export const getBorrowerByPhone = async (phoneNumber: string): Promise<Borrower>
         employmentStatus: 'Employed',
     };
 
-    console.log('[API] Successfully mapped to Borrower object:', borrower);
+    console.log('[API-WEB] Successfully mapped to Borrower object:', borrower);
     return borrower;
 
   } catch(err) {
-      console.error('[API] Error in getBorrowerByPhone:', err);
+      console.error('[API-WEB] Error in getBorrowerByPhone:', err);
       throw err;
   }
 };
+
+// This version is for the BOT (server-side)
+export const getBorrowerByPhoneForBot = async (phoneNumber: string): Promise<Borrower> => {
+  console.log(`[API-BOT] Looking up borrower with phone number: ${phoneNumber}`);
+  try {
+    // This uses the path parameter as required by the bot's server context
+    const response = await apiCall<{ borrowerId: string; provisionedData: { data: string }[] }>(`/ussd/borrowers/${phoneNumber}`);
+    
+    console.log('[API-BOT] Full response received for borrower:', response);
+
+    if (!response || !response.provisionedData || response.provisionedData.length === 0) {
+        console.error('[API-BOT] Borrower not found or provisionedData is missing/empty in the response.');
+        throw new Error('Borrower not found or provisioned data is missing.');
+    }
+
+    const provisionedDataString = response.provisionedData[0].data;
+    const provisionedData = JSON.parse(provisionedDataString);
+
+    const borrower: Borrower = {
+        id: response.borrowerId,
+        name: provisionedData.name,
+        phoneNumber: phoneNumber,
+        monthlyIncome: provisionedData.salary,
+        employmentStatus: 'Employed',
+    };
+
+    console.log('[API-BOT] Successfully mapped to Borrower object:', borrower);
+    return borrower;
+
+  } catch(err) {
+      console.error('[API-BOT] Error in getBorrowerByPhoneForBot:', err);
+      throw err;
+  }
+}
 
 
 export const getProviders = async (): Promise<Provider[]> => {
@@ -137,7 +174,7 @@ export const getActiveLoans = async (borrowerId: string): Promise<Loan[]> => {
 export const getTransactions = (borrowerId: string): Promise<Transaction[]> => {
     console.log(`[API] Fetching transactions for borrower ${borrowerId}`);
     return apiCall<any[]>(`/ussd/borrowers/${borrowerId}/transactions`).then(txns => txns.map((t, index) => ({
-        id: `txn-${t.date}-${t.amount}-${t.description}-${index}`,
+        id: `txn-${t.date}-${t.amount}-${t.description}-${index}-${Math.random()}`,
         date: new Date(t.date).toISOString(),
         description: t.description,
         amount: t.amount,

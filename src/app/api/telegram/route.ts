@@ -1,7 +1,7 @@
 
 import {NextRequest, NextResponse} from 'next/server';
 import TelegramBot from 'node-telegram-bot-api';
-import { getBorrowerByPhone, getActiveLoans, getProviders, getEligibility, getTransactions, applyForLoan } from '@/lib/mockApi';
+import { getBorrowerByPhoneForBot, getActiveLoans, getProviders, getEligibility, getTransactions, applyForLoan } from '@/lib/mockApi';
 
 let botInstance: TelegramBot | null = null;
 const userState = new Map<number, {state: string, borrowerId?: string, productId?: string}>();
@@ -45,7 +45,7 @@ const initializeBot = () => {
             if (msg.text?.startsWith('/')) {
                 return;
             }
-
+            
             console.log(`Received message from chat ID: ${chatId}. Current state: ${currentState?.state}`);
             if (currentState?.state === 'awaiting_phone') {
                 handleCheck(bot, chatId, msg.text || '');
@@ -81,13 +81,13 @@ async function handleCheck(bot: TelegramBot, chatId: number, messageText: string
     // Extract numbers from the message text
     const phoneNumber = messageText.replace(/\D/g, '');
 
-    if (!phoneNumber || !/^\d{9,15}$/.test(phoneNumber)) {
+    if (!phoneNumber || phoneNumber.length < 9) {
         await bot.sendMessage(chatId, 'That doesn\'t look like a valid phone number. Please enter your 9-digit phone number.', { parse_mode: 'Markdown' });
         return;
     }
 
     try {
-        const borrower = await getBorrowerByPhone(phoneNumber);
+        const borrower = await getBorrowerByPhoneForBot(phoneNumber);
         userState.set(chatId, { state: 'authenticated', borrowerId: borrower.id });
         
         const welcomeMessage = `Hello, *${borrower.name}*! What would you like to do today?`;
@@ -102,8 +102,8 @@ async function handleCheck(bot: TelegramBot, chatId: number, messageText: string
         };
         await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown', ...opts });
 
-    } catch (error) {
-        await bot.sendMessage(chatId, `Sorry, the phone number *${phoneNumber}* is not registered. Please check the number and try again.`, { parse_mode: 'Markdown' });
+    } catch (error: any) {
+        await bot.sendMessage(chatId, `Sorry, the phone number *${phoneNumber}* is not registered. Please check the number and try again.\n_Reason: ${error.message}_`, { parse_mode: 'Markdown' });
     }
 }
 
@@ -136,7 +136,6 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
         case 'main_menu':
             const currentState = userState.get(chatId);
             if (currentState?.borrowerId) {
-                 const borrower = await getBorrowerByPhone(currentState.borrowerId); // Fetch full borrower details if needed, or just use ID
                  const welcomeMessage = `What else would you like to do today?`;
                     const opts = {
                         reply_markup: {
