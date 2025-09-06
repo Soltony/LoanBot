@@ -121,21 +121,8 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
 
     const chatId = message.chat.id;
     const data = callbackQuery.data;
-    const parts = data.split('_');
-    
-    let action: string;
-    let args: string[] = [];
-    
-    const potentialId = parts[parts.length - 1];
-    const isIdPresent = parts.length > 1 && (potentialId.length > 10 || !isNaN(parseInt(potentialId)));
+    const [action, ...args] = data.split('_');
 
-    if (isIdPresent) {
-        action = parts.slice(0, -1).join('_');
-        args = parts.slice(parts.length - (parts.length - (action.split('_').length)));
-    } else {
-        action = data;
-    }
-    
     await bot.answerCallbackQuery(callbackQuery.id);
     
     const currentState = userState.get(chatId);
@@ -154,7 +141,7 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
         case 'repay':
             await handleRepay(bot, chatId, args[0], args[1]);
             break;
-        case 'active_loans':
+        case 'active': // from 'active_loans'
             if (!currentState?.borrowerId) {
                  console.error(`[BOT ERROR] 'active_loans' action failed: No borrowerId found in state for chat ${chatId}.`);
                  await bot.sendMessage(chatId, 'Your session seems to have expired. Please start over with /start.');
@@ -170,7 +157,7 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
             }
             await handleHistory(bot, chatId, currentState.borrowerId);
             break;
-        case 'main_menu':
+        case 'main': // from 'main_menu'
             console.log(`[BOT LOG] Entering 'main_menu' handler.`);
             if (currentState?.borrowerId) {
                 console.log(`[BOT LOG] Found borrowerId: ${currentState.borrowerId}. Sending main menu.`);
@@ -441,3 +428,5 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({status: 'error', message: 'Bot initialization failed. Check server logs.'}, { status: 500 });
     }
 }
+
+    
