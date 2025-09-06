@@ -130,7 +130,7 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
             await handleApply(bot, chatId, args[0], args[1]);
             break;
         case 'active_loans':
-            await handleActiveLoans(bot, chatId, args[0]);
+             await handleActiveLoans(bot, chatId, args[0]);
             break;
         case 'history':
             await handleHistory(bot, chatId, args[0]);
@@ -238,11 +238,13 @@ async function handleLoanAmount(bot: TelegramBot, chatId: number, amountText: st
             loanAmount: amount,
         });
         await bot.sendMessage(chatId, `Congratulations! Your loan request for *${amount.toLocaleString()} ETB* has been approved and disbursed. 🎉`, { parse_mode: 'Markdown'});
-        userState.set(chatId, { state: 'authenticated', borrowerId: currentState.borrowerId }); // Reset state
+        // IMPORTANT: Preserve the borrowerId in the state after the action is complete.
+        userState.set(chatId, { state: 'authenticated', borrowerId: currentState.borrowerId });
     } catch (error: any) {
         const errorMessage = error.message || 'An unknown error occurred.';
         await bot.sendMessage(chatId, `Sorry, your loan application could not be processed.\nReason: ${errorMessage}`);
-        userState.set(chatId, { state: 'authenticated', borrowerId: currentState.borrowerId }); // Reset state
+         // IMPORTANT: Preserve the borrowerId in the state even after an error.
+        userState.set(chatId, { state: 'authenticated', borrowerId: currentState.borrowerId });
     }
 }
 
