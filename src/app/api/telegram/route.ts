@@ -39,12 +39,12 @@ const initializeBot = () => {
 
         bot.on('message', (msg) => {
             const chatId = msg.chat.id;
-            const currentState = userState.get(chatId);
-
-            // If the message is a command, let the onText handlers deal with it.
+            // Ignore messages that are commands, as they are handled by onText
             if (msg.text?.startsWith('/')) {
                 return;
             }
+
+            const currentState = userState.get(chatId);
             
             console.log(`Received message from chat ID: ${chatId}. Current state: ${currentState?.state}`);
             if (currentState?.state === 'awaiting_phone') {
@@ -103,7 +103,8 @@ async function handleCheck(bot: TelegramBot, chatId: number, messageText: string
         await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown', ...opts });
 
     } catch (error: any) {
-        await bot.sendMessage(chatId, `Sorry, the phone number *${phoneNumber}* is not registered. Please check the number and try again.\n_Reason: ${error.message}_`, { parse_mode: 'Markdown' });
+        console.error(`[BOT] Failed to get borrower for phone ${phoneNumber}. Error:`, error.message);
+        await bot.sendMessage(chatId, `Sorry, the phone number *${phoneNumber}* is not registered. Please check the number and try again.`, { parse_mode: 'Markdown' });
     }
 }
 

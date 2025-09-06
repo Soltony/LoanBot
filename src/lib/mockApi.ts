@@ -3,6 +3,8 @@ import type { Borrower, Provider, Loan, Transaction, Eligibility, EligibilityPro
 
 // The base URL for your loan application backend.
 const API_BASE_URL = '/api';
+const EXTERNAL_API_BASE_URL = 'https://nibterasales.nibbank.com.et/api';
+
 
 // --- MOCK DATABASE for data not provided by the backend API ---
 let allProducts: EligibilityProduct[] = [];
@@ -90,22 +92,33 @@ export const getBorrowerByPhone = async (phoneNumber: string): Promise<Borrower>
 // This version is for the BOT (server-side)
 export const getBorrowerByPhoneForBot = async (phoneNumber: string): Promise<Borrower> => {
   console.log(`[API-BOT] Looking up borrower with phone number: ${phoneNumber}`);
+  const url = `${EXTERNAL_API_BASE_URL}/ussd/borrowers?phoneNumber=${phoneNumber}`;
+  console.log(`[API-BOT] Calling external URL: ${url}`);
+  
   try {
-    // This uses the path parameter as required by the bot's server context
-    const response = await apiCall<{ borrowerId: string; provisionedData: { data: string }[] }>(`/ussd/borrowers/${phoneNumber}`);
-    
-    console.log('[API-BOT] Full response received for borrower:', response);
+    const response = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+    });
 
-    if (!response || !response.provisionedData || response.provisionedData.length === 0) {
+    if (!response.ok) {
+        const errorBody = await response.text();
+        console.error(`[API-BOT] Error from external API: ${response.status} ${response.statusText}`, errorBody);
+        throw new Error(errorBody || `Request failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('[API-BOT] Full response received for borrower:', data);
+
+    if (!data || !data.provisionedData || data.provisionedData.length === 0) {
         console.error('[API-BOT] Borrower not found or provisionedData is missing/empty in the response.');
         throw new Error('Borrower not found or provisioned data is missing.');
     }
 
-    const provisionedDataString = response.provisionedData[0].data;
+    const provisionedDataString = data.provisionedData[0].data;
     const provisionedData = JSON.parse(provisionedDataString);
 
     const borrower: Borrower = {
-        id: response.borrowerId,
+        id: data.borrowerId, // Use the borrowerId from the response
         name: provisionedData.name,
         phoneNumber: phoneNumber,
         monthlyIncome: provisionedData.salary,
@@ -115,8 +128,8 @@ export const getBorrowerByPhoneForBot = async (phoneNumber: string): Promise<Bor
     console.log('[API-BOT] Successfully mapped to Borrower object:', borrower);
     return borrower;
 
-  } catch(err) {
-      console.error('[API-BOT] Error in getBorrowerByPhoneForBot:', err);
+  } catch(err: any) {
+      console.error(`[API-BOT] Error in getBorrowerByPhoneForBot for number ${phoneNumber}:`, err.message);
       throw err;
   }
 }
