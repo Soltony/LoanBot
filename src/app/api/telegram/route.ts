@@ -39,7 +39,6 @@ const initializeBot = () => {
 
         bot.on('message', (msg) => {
             const chatId = msg.chat.id;
-            // Ignore messages that are commands, as they are handled by onText
             if (msg.text?.startsWith('/')) {
                 return;
             }
@@ -80,7 +79,6 @@ To get started, please send me your 9-digit phone number registered with the ban
 async function handleCheck(bot: TelegramBot, chatId: number, messageText: string) {
     console.log(`[BOT LOG] handleCheck received raw message text: "${messageText}"`);
 
-    // Extract numbers from the message text
     const phoneNumber = messageText.replace(/\D/g, '');
     console.log(`[BOT LOG] Extracted phone number: "${phoneNumber}"`);
 
@@ -129,7 +127,6 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
              await handleProviderSelection(bot, chatId, args[0], args[1]);
             break;
         case 'apply':
-            // args are [borrowerId, productId]
             await handleApply(bot, chatId, args[0], args[1]);
             break;
         case 'active_loans':
@@ -249,8 +246,9 @@ async function handleActiveLoans(bot: TelegramBot, chatId: number, borrowerId: s
         const loans = await getActiveLoansForBot(borrowerId);
         const unpaidLoans = loans.filter(loan => loan.repaymentStatus === 'Unpaid');
 
+        let responseText: string;
         if (unpaidLoans.length > 0) {
-            let responseText = '*Your Active Loans:*\n\n';
+            responseText = '*Your Active Loans:*\n\n';
             unpaidLoans.forEach(loan => {
                 const dueDate = new Date(loan.dueDate).toLocaleDateString();
                 responseText += `*${loan.productName}*\n`;
@@ -258,10 +256,20 @@ async function handleActiveLoans(bot: TelegramBot, chatId: number, borrowerId: s
                 responseText += `Amount Repaid: ${loan.amountRepaid.toLocaleString('en-US', { style: 'currency', currency: 'ETB' })}\n`;
                 responseText += `Due Date: ${dueDate}\n\n`;
             });
-             await bot.sendMessage(chatId, responseText, { parse_mode: 'Markdown' });
         } else {
-             await bot.sendMessage(chatId, 'You have no active loans at the moment. 🎉');
+             responseText = 'You have no active loans at the moment. 🎉';
         }
+        
+        const opts = {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '« Back to Main Menu', callback_data: `main_menu` }]
+                ]
+            }
+        };
+        await bot.sendMessage(chatId, responseText, opts);
+
     } catch (error) {
         console.error("Error in handleActiveLoans:", error);
         await bot.sendMessage(chatId, 'Sorry, there was an error fetching your active loans.');
@@ -271,25 +279,35 @@ async function handleActiveLoans(bot: TelegramBot, chatId: number, borrowerId: s
 async function handleHistory(bot: TelegramBot, chatId: number, borrowerId: string) {
     try {
         const transactions = await getTransactionsForBot(borrowerId);
+        let responseText: string;
+
         if (transactions.length > 0) {
-            let responseText = '*Your Transaction History:*\n\n';
+            responseText = '*Your Transaction History:*\n\n';
             transactions.slice(0, 10).forEach(txn => { // Limit to last 10 transactions
                 const txnDate = new Date(txn.date).toLocaleDateString();
                 const amount = txn.amount.toLocaleString('en-US', { style: 'currency', currency: 'ETB' });
                 responseText += `${txnDate} - ${txn.description} - *${amount}*\n`;
             });
-            await bot.sendMessage(chatId, responseText, { parse_mode: 'Markdown' });
         } else {
-            await bot.sendMessage(chatId, 'You have no transaction history.');
+            responseText = 'You have no transaction history.';
         }
+        
+        const opts = {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '« Back to Main Menu', callback_data: `main_menu` }]
+                ]
+            }
+        };
+        await bot.sendMessage(chatId, responseText, opts);
+
     } catch (error) {
         console.error("Error in handleHistory:", error);
         await bot.sendMessage(chatId, 'Sorry, there was an error fetching your transaction history.');
     }
 }
 
-// The GET handler is now responsible for initializing the bot.
-// This is the most reliable way to start the bot in a local dev environment.
 export async function GET(request: NextRequest) {
     console.log("GET /api/telegram called. Initializing bot...");
     const bot = initializeBot();
