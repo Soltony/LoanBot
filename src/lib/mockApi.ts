@@ -1,5 +1,3 @@
-
-
 'use client';
 import type { Borrower, Provider, Loan, Transaction, Eligibility, EligibilityProduct, ProductDetails } from './types';
 
@@ -53,7 +51,8 @@ export const getBorrowerByPhone = async (phoneNumber: string): Promise<Borrower>
   console.log(`[API] Looking up borrower with phone number: ${phoneNumber}`);
   
   try {
-    const response = await apiCall<{ borrowerId: string; provisionedData: { data: string }[] }>(`/ussd/borrowers?phoneNumber=${phoneNumber}`);
+    // CORRECTED: The phone number should be a path parameter, not a query parameter.
+    const response = await apiCall<{ borrowerId: string; provisionedData: { data: string }[] }>(`/ussd/borrowers/${phoneNumber}`);
     
     console.log('[API] Full response received for borrower:', response);
 
