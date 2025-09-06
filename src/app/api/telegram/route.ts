@@ -136,8 +136,11 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
             await handleHistory(bot, chatId, args[0]);
             break;
         case 'main_menu':
+            console.log(`[BOT LOG] Entering handleCallbackQuery for 'main_menu'`);
             const currentState = userState.get(chatId);
+            console.log(`[BOT LOG] Current state for chat ID ${chatId}:`, currentState);
             if (currentState?.borrowerId) {
+                console.log(`[BOT LOG] Found borrowerId: ${currentState.borrowerId}. Sending main menu.`);
                  const welcomeMessage = `What else would you like to do today?`;
                     const opts = {
                         reply_markup: {
@@ -149,6 +152,9 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
                         }
                     };
                 await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown', ...opts });
+            } else {
+                console.log(`[BOT LOG] No borrowerId found in state. Cannot send main menu.`);
+                await bot.sendMessage(chatId, 'Something went wrong. Please try starting over with /start.');
             }
             break;
     }
