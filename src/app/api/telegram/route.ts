@@ -1,6 +1,47 @@
+
 import {NextRequest, NextResponse} from 'next/server';
 import TelegramBot from 'node-telegram-bot-api';
-import { getBorrowerByPhone, getActiveLoans, getProviders, getEligibility } from '@/lib/mockApi';
+import { getBorrowerByPhone, getActiveLoans, getProviders, getEligibility, getTransactions } from '@/lib/mockApi';
+
+let botInstance: TelegramBot | null = null;
+
+const initializeBot = () => {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    if (!token) {
+        throw new Error('TELEGRAM_BOT_TOKEN is not set.');
+    }
+
+    if (botInstance) {
+        return botInstance;
+    }
+
+    // Use long polling instead of webhooks for local development
+    const bot = new TelegramBot(token, { polling: true });
+    botInstance = bot;
+
+    console.log("Telegram bot initialized with long polling.");
+
+    bot.onText(/\/start/, (msg) => handleStart(bot, msg.chat.id));
+
+    bot.onText(/\/check (.+)/, (msg, match) => {
+        const chatId = msg.chat.id;
+        const phoneNumber = match ? match[1] : '';
+        handleCheck(bot, chatId, phoneNumber);
+    });
+
+    bot.on('callback_query', (callbackQuery) => handleCallbackQuery(bot, callbackQuery));
+
+    bot.on('polling_error', (error) => {
+        console.error('Polling error:', error.message);
+    });
+    
+    bot.on('webhook_error', (error) => {
+        console.error('Webhook error:', error.message);
+    });
+
+    return bot;
+};
+
 
 async function handleStart(bot: TelegramBot, chatId: number) {
     const welcomeMessage = `Welcome to LoanBot! 🏦
@@ -143,42 +184,21 @@ async function handleHistory(bot: TelegramBot, chatId: number, borrowerId: strin
 }
 
 
-// This is the main entry point for the Telegram webhook.
-export async function POST(request: NextRequest) {
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    if (!token) {
-        console.error('TELEGRAM_BOT_TOKEN is not set.');
-        return NextResponse.json({status: 'error', message: 'Bot token not configured'}, {status: 500});
-    }
-
-    const bot = new TelegramBot(token);
-
+// This endpoint now simply ensures the bot is running.
+// The bot itself handles messages via long polling.
+export async function GET(request: NextRequest) {
     try {
-        const body = await request.json();
-        console.log('Received Telegram update:', JSON.stringify(body, null, 2));
-
-        if (body.message) {
-            const message = body.message;
-            const chatId = message.chat.id;
-            const text = message.text || '';
-
-            if (text.startsWith('/start')) {
-                await handleStart(bot, chatId);
-            } else if (text.startsWith('/check')) {
-                const phoneNumber = text.split(' ')[1];
-                await handleCheck(bot, chatId, phoneNumber);
-            } else {
-                await bot.sendMessage(chatId, `I'm not sure how to handle that. Try /start.`);
-            }
-        } else if (body.callback_query) {
-            await handleCallbackQuery(bot, body.callback_query);
-        }
-
-        return NextResponse.json({status: 'ok'});
-    } catch (error) {
-        console.error('Error processing Telegram update:', error);
-        return NextResponse.json({status: 'error', message: 'Internal server error'}, {status: 500});
+        initializeBot();
+        return NextResponse.json({status: 'ok', message: 'Bot is running with long polling.'});
+    } catch (error: any) {
+        console.error('Error initializing Telegram bot:', error);
+        return NextResponse.json({status: 'error', message: error.message || 'Internal server error'}, {status: 500});
     }
+}
+
+// The POST endpoint is no longer used for webhooks but can be kept for other purposes or removed.
+export async function POST(request: NextRequest) {
+    return NextResponse.json({status: 'ok', message: 'POST endpoint is not used for polling.'});
 }
 
     
