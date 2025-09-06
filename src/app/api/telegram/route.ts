@@ -1,7 +1,7 @@
 
 import {NextRequest, NextResponse} from 'next/server';
 import TelegramBot from 'node-telegram-bot-api';
-import { getBorrowerByPhoneForBot, getActiveLoans, getProviders, getEligibility, getTransactions, applyForLoan } from '@/lib/mockApi';
+import { getBorrowerByPhoneForBot, getActiveLoansForBot, getProvidersForBot, getEligibilityForBot, getTransactionsForBot, applyForLoanForBot } from '@/lib/mockApi';
 
 let botInstance: TelegramBot | null = null;
 const userState = new Map<number, {state: string, borrowerId?: string, productId?: string}>();
@@ -159,7 +159,7 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
 
 async function handleEligibility(bot: TelegramBot, chatId: number, borrowerId: string) {
     try {
-        const providers = await getProviders();
+        const providers = await getProvidersForBot();
         const keyboard = providers.map(p => ([{ text: p.name, callback_data: `provider_${borrowerId}_${p.id}` }]));
         keyboard.push([{ text: '« Back to Main Menu', callback_data: `main_menu` }]);
         const opts = {
@@ -169,13 +169,14 @@ async function handleEligibility(bot: TelegramBot, chatId: number, borrowerId: s
         };
         await bot.sendMessage(chatId, 'Please select a loan provider to check your eligibility:', opts);
     } catch (error) {
+        console.error("Error in handleEligibility:", error);
         await bot.sendMessage(chatId, 'Sorry, there was an error fetching providers. Please try again later.');
     }
 }
 
 async function handleProviderSelection(bot: TelegramBot, chatId: number, borrowerId: string, providerId: string) {
     try {
-        const eligibility = await getEligibility(borrowerId, providerId);
+        const eligibility = await getEligibilityForBot(borrowerId, providerId);
         let responseText = `*Your Eligibility Results:*\n\n`;
         
         const keyboard = [];
@@ -204,6 +205,7 @@ async function handleProviderSelection(bot: TelegramBot, chatId: number, borrowe
         };
         await bot.sendMessage(chatId, responseText, opts);
     } catch (error) {
+        console.error("Error in handleProviderSelection:", error);
         await bot.sendMessage(chatId, 'Sorry, could not fetch your eligibility at this moment.');
     }
 }
@@ -227,7 +229,7 @@ async function handleLoanAmount(bot: TelegramBot, chatId: number, amountText: st
     }
 
     try {
-        await applyForLoan({
+        await applyForLoanForBot({
             borrowerId: currentState.borrowerId,
             productId: currentState.productId,
             loanAmount: amount,
@@ -244,7 +246,7 @@ async function handleLoanAmount(bot: TelegramBot, chatId: number, amountText: st
 
 async function handleActiveLoans(bot: TelegramBot, chatId: number, borrowerId: string) {
     try {
-        const loans = await getActiveLoans(borrowerId);
+        const loans = await getActiveLoansForBot(borrowerId);
         const unpaidLoans = loans.filter(loan => loan.repaymentStatus === 'Unpaid');
 
         if (unpaidLoans.length > 0) {
@@ -261,13 +263,14 @@ async function handleActiveLoans(bot: TelegramBot, chatId: number, borrowerId: s
              await bot.sendMessage(chatId, 'You have no active loans at the moment. 🎉');
         }
     } catch (error) {
+        console.error("Error in handleActiveLoans:", error);
         await bot.sendMessage(chatId, 'Sorry, there was an error fetching your active loans.');
     }
 }
 
 async function handleHistory(bot: TelegramBot, chatId: number, borrowerId: string) {
     try {
-        const transactions = await getTransactions(borrowerId);
+        const transactions = await getTransactionsForBot(borrowerId);
         if (transactions.length > 0) {
             let responseText = '*Your Transaction History:*\n\n';
             transactions.slice(0, 10).forEach(txn => { // Limit to last 10 transactions
@@ -280,6 +283,7 @@ async function handleHistory(bot: TelegramBot, chatId: number, borrowerId: strin
             await bot.sendMessage(chatId, 'You have no transaction history.');
         }
     } catch (error) {
+        console.error("Error in handleHistory:", error);
         await bot.sendMessage(chatId, 'Sorry, there was an error fetching your transaction history.');
     }
 }
