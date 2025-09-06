@@ -118,15 +118,29 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
     }
 
     const chatId = message.chat.id;
-    const parts = callbackQuery.data.split('_');
-    const action = parts.length > 1 ? parts.slice(0, -1).join('_') : parts[0];
-    const args = parts.length > 1 ? parts.slice(1) : [];
+    const data = callbackQuery.data;
+    const parts = data.split('_');
+    
+    // Improved action/args parsing
+    let action: string;
+    let args: string[] = [];
+
+    // Check if the last part is a borrower ID (assuming it's a long string or number)
+    // A simple heuristic: check if it looks like an ID. This might need refinement.
+    const potentialId = parts[parts.length - 1];
+    const isIdPresent = parts.length > 1 && (potentialId.length > 10 || !isNaN(parseInt(potentialId)));
+
+    if (isIdPresent) {
+        action = parts.slice(0, -1).join('_');
+        args = [potentialId];
+    } else {
+        action = data; // The whole string is the action, e.g., 'main_menu'
+    }
     
     await bot.answerCallbackQuery(callbackQuery.id);
     
     const currentState = userState.get(chatId);
     console.log(`[BOT LOG] Handling action: '${action}' for chat ID ${chatId}. Current state:`, JSON.stringify(currentState));
-
 
     switch(action) {
         case 'eligibility':
@@ -318,7 +332,14 @@ async function handleActiveLoans(bot: TelegramBot, chatId: number, borrowerId: s
 
     } catch (error) {
         console.error("[BOT ERROR] In handleActiveLoans:", error);
-        await bot.sendMessage(chatId, 'Sorry, there was an error fetching your active loans.');
+        const opts = {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '« Back to Main Menu', callback_data: `main_menu` }]
+                ]
+            }
+        };
+        await bot.sendMessage(chatId, 'Sorry, there was an error fetching your active loans.', opts);
     }
 }
 
@@ -363,5 +384,3 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({status: 'error', message: 'Bot initialization failed. Check server logs.'}, { status: 500 });
     }
 }
-
-    
