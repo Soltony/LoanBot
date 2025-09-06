@@ -78,8 +78,11 @@ To get started, please send me your 9-digit phone number registered with the ban
 }
 
 async function handleCheck(bot: TelegramBot, chatId: number, messageText: string) {
+    console.log(`[BOT LOG] handleCheck received raw message text: "${messageText}"`);
+
     // Extract numbers from the message text
     const phoneNumber = messageText.replace(/\D/g, '');
+    console.log(`[BOT LOG] Extracted phone number: "${phoneNumber}"`);
 
     if (!phoneNumber || phoneNumber.length < 9) {
         await bot.sendMessage(chatId, 'That doesn\'t look like a valid phone number. Please enter your 9-digit phone number.', { parse_mode: 'Markdown' });
@@ -88,6 +91,7 @@ async function handleCheck(bot: TelegramBot, chatId: number, messageText: string
 
     try {
         const borrower = await getBorrowerByPhoneForBot(phoneNumber);
+        console.log('[BOT LOG] API call successful. Received borrower:', borrower);
         userState.set(chatId, { state: 'authenticated', borrowerId: borrower.id });
         
         const welcomeMessage = `Hello, *${borrower.name}*! What would you like to do today?`;
@@ -103,7 +107,7 @@ async function handleCheck(bot: TelegramBot, chatId: number, messageText: string
         await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown', ...opts });
 
     } catch (error: any) {
-        console.error(`[BOT] Failed to get borrower for phone ${phoneNumber}. Error:`, error.message);
+        console.error(`[BOT LOG] Failed to get borrower for phone ${phoneNumber}. Full Error:`, error);
         await bot.sendMessage(chatId, `Sorry, the phone number *${phoneNumber}* is not registered. Please check the number and try again.`, { parse_mode: 'Markdown' });
     }
 }
