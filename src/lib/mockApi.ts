@@ -1,4 +1,5 @@
 
+
 'use client';
 import type { Borrower, Provider, Loan, Transaction, Eligibility, EligibilityProduct, ProductDetails } from './types';
 
@@ -49,12 +50,10 @@ const apiCall = async <T>(endpoint: string, options: RequestInit = {}): Promise<
 // --- API FUNCTIONS ---
 
 export const getBorrowerByPhone = async (phoneNumber: string): Promise<Borrower> => {
-  console.log(`[API] Original phone number: ${phoneNumber}`);
-  const formattedPhoneNumber = phoneNumber.slice(-9);
-  console.log(`[API] Formatted phone number for API call: ${formattedPhoneNumber}`);
-
+  console.log(`[API] Looking up borrower with phone number: ${phoneNumber}`);
+  
   try {
-    const response = await apiCall<{ borrowerId: string; provisionedData: { data: string }[] }>(`/ussd/borrowers?phoneNumber=${formattedPhoneNumber}`);
+    const response = await apiCall<{ borrowerId: string; provisionedData: { data: string }[] }>(`/ussd/borrowers?phoneNumber=${phoneNumber}`);
     
     console.log('[API] Full response received for borrower:', response);
 
