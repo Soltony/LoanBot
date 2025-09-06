@@ -14,44 +14,50 @@ const initializeBot = () => {
 
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) {
-        console.error('TELEGRAM_BOT_TOKEN is not set. The bot cannot start.');
-        throw new Error('TELEGRAM_BOT_TOKEN is not set in .env file.');
+        console.error('--- TELEGRAM BOT FAILED TO START ---');
+        console.error('TELEGRAM_BOT_TOKEN is not set. Please add it to your .env file.');
+        return null;
     }
 
     console.log("Initializing new Telegram bot instance...");
-    const bot = new TelegramBot(token, { polling: true });
-    botInstance = bot;
+    try {
+        const bot = new TelegramBot(token, { polling: true });
+        botInstance = bot;
 
-    bot.on('polling_error', (error) => {
-        console.error('Polling error:', error.code, error.message);
-    });
+        bot.on('polling_error', (error) => {
+            console.error('Polling error:', error.code, '-', error.message);
+        });
 
-    bot.onText(/\/start/, (msg) => {
-        console.log(`Received /start command from chat ID: ${msg.chat.id}`);
-        handleStart(bot, msg.chat.id);
-    });
+        bot.onText(/\/start/, (msg) => {
+            console.log(`Received /start command from chat ID: ${msg.chat.id}`);
+            handleStart(bot, msg.chat.id);
+        });
 
-    bot.on('message', (msg) => {
-        // Ignore commands which are handled by onText
-        if (msg.text?.startsWith('/')) {
-            console.log(`Ignoring command message: ${msg.text}`);
-            return;
-        }
+        bot.on('message', (msg) => {
+            if (msg.text?.startsWith('/')) {
+                console.log(`Ignoring command message handled by onText: ${msg.text}`);
+                return;
+            }
+            
+            const chatId = msg.chat.id;
+            console.log(`Received message from chat ID: ${chatId}. Current state: ${userState.get(chatId)}`);
+            if (userState.get(chatId) === 'awaiting_phone') {
+                handleCheck(bot, chatId, msg.text || '');
+            }
+        });
+
+        bot.on('callback_query', (callbackQuery) => {
+            console.log(`Received callback query: ${callbackQuery.data}`);
+            handleCallbackQuery(bot, callbackQuery);
+        });
         
-        const chatId = msg.chat.id;
-        console.log(`Received message from chat ID: ${chatId}. Current state: ${userState.get(chatId)}`);
-        if (userState.get(chatId) === 'awaiting_phone') {
-            handleCheck(bot, chatId, msg.text || '');
-        }
-    });
-
-    bot.on('callback_query', (callbackQuery) => {
-        console.log(`Received callback query: ${callbackQuery.data}`);
-        handleCallbackQuery(bot, callbackQuery);
-    });
-
-    console.log("Telegram bot event listeners are set up.");
-    return bot;
+        console.log('--- TELEGRAM BOT IS RUNNING ---');
+        console.log('Bot is now polling for messages.');
+        return bot;
+    } catch(error) {
+        console.error('--- TELEGRAM BOT FAILED TO INITIALIZE ---', error);
+        return null;
+    }
 };
 
 
@@ -193,13 +199,11 @@ async function handleHistory(bot: TelegramBot, chatId: number, borrowerId: strin
     }
 }
 
-// This endpoint is just for initializing the bot.
+// Automatically initialize the bot when the server starts
+initializeBot();
+
+// This empty GET handler is to ensure the route is available.
+// The bot logic is handled by the long polling mechanism started by initializeBot().
 export async function GET(request: NextRequest) {
-    try {
-        initializeBot();
-        return NextResponse.json({status: 'ok', message: 'Bot is running.'});
-    } catch (error: any) {
-        console.error('Error initializing Telegram bot:', error);
-        return NextResponse.json({status: 'error', message: error.message || 'Internal server error'}, {status: 500});
-    }
+    return NextResponse.json({status: 'ok', message: 'Bot is polling for messages.'});
 }
