@@ -54,7 +54,7 @@ const initializeBot = () => {
         });
 
         bot.on('callback_query', (callbackQuery) => {
-            console.log(`Received callback query: ${callbackQuery.data}`);
+            console.log(`[BOT LOG] Received callback_query with data: "${callbackQuery.data}"`);
             handleCallbackQuery(bot, callbackQuery);
         });
         
@@ -112,12 +112,19 @@ async function handleCheck(bot: TelegramBot, chatId: number, messageText: string
 
 async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.CallbackQuery) {
     const message = callbackQuery.message;
-    if (!message || !callbackQuery.data) return;
+    if (!message || !callbackQuery.data) {
+        console.error('[BOT ERROR] Callback query is missing message or data.');
+        return;
+    }
 
     const chatId = message.chat.id;
     const [action, ...args] = callbackQuery.data.split('_');
 
     await bot.answerCallbackQuery(callbackQuery.id);
+    
+    const currentState = userState.get(chatId);
+    console.log(`[BOT LOG] Handling action: '${action}' for chat ID ${chatId}. Current state:`, JSON.stringify(currentState));
+
 
     switch(action) {
         case 'eligibility':
@@ -130,15 +137,23 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
             await handleApply(bot, chatId, args[0], args[1]);
             break;
         case 'active_loans':
-             await handleActiveLoans(bot, chatId, args[0]);
+            if (!currentState?.borrowerId) {
+                 console.error(`[BOT ERROR] 'active_loans' action failed: No borrowerId found in state for chat ${chatId}.`);
+                 await bot.sendMessage(chatId, 'Your session seems to have expired. Please start over with /start.');
+                 return;
+            }
+             await handleActiveLoans(bot, chatId, currentState.borrowerId);
             break;
         case 'history':
-            await handleHistory(bot, chatId, args[0]);
+            if (!currentState?.borrowerId) {
+                 console.error(`[BOT ERROR] 'history' action failed: No borrowerId found in state for chat ${chatId}.`);
+                 await bot.sendMessage(chatId, 'Your session seems to have expired. Please start over with /start.');
+                 return;
+            }
+            await handleHistory(bot, chatId, currentState.borrowerId);
             break;
         case 'main_menu':
-            console.log(`[BOT LOG] Entering handleCallbackQuery for 'main_menu'`);
-            const currentState = userState.get(chatId);
-            console.log(`[BOT LOG] Current state for chat ID ${chatId}:`, currentState);
+            console.log(`[BOT LOG] Entering 'main_menu' handler.`);
             if (currentState?.borrowerId) {
                 console.log(`[BOT LOG] Found borrowerId: ${currentState.borrowerId}. Sending main menu.`);
                  const welcomeMessage = `What else would you like to do today?`;
@@ -153,10 +168,13 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
                     };
                 await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown', ...opts });
             } else {
-                console.log(`[BOT LOG] No borrowerId found in state. Cannot send main menu.`);
-                await bot.sendMessage(chatId, 'Something went wrong. Please try starting over with /start.');
+                console.error(`[BOT ERROR] 'main_menu' action failed: No borrowerId found in state for chat ${chatId}.`);
+                await bot.sendMessage(chatId, 'Your session seems to have expired. Please start over with /start.');
             }
             break;
+        default:
+             console.log(`[BOT LOG] Unknown action received: ${action}`);
+             break;
     }
 }
 
@@ -238,14 +256,22 @@ async function handleLoanAmount(bot: TelegramBot, chatId: number, amountText: st
             loanAmount: amount,
         });
         await bot.sendMessage(chatId, `Congratulations! Your loan request for *${amount.toLocaleString()} ETB* has been approved and disbursed. 🎉`, { parse_mode: 'Markdown'});
-        // IMPORTANT: Preserve the borrowerId in the state after the action is complete.
         userState.set(chatId, { state: 'authenticated', borrowerId: currentState.borrowerId });
     } catch (error: any) {
         const errorMessage = error.message || 'An unknown error occurred.';
         await bot.sendMessage(chatId, `Sorry, your loan application could not be processed.\nReason: ${errorMessage}`);
-         // IMPORTANT: Preserve the borrowerId in the state even after an error.
         userState.set(chatId, { state: 'authenticated', borrowerId: currentState.borrowerId });
     }
+    
+    // Always show the main menu afterwards
+    const opts = {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '« Back to Main Menu', callback_data: 'main_menu' }]
+            ]
+        }
+    };
+    await bot.sendMessage(chatId, 'You can now go back to the main menu.', opts);
 }
 
 
@@ -263,7 +289,7 @@ async function handleActiveLoans(bot: TelegramBot, chatId: number, borrowerId: s
         if (unpaidLoans.length > 0) {
             responseText = '*Your Active Loans:*\n\n';
             unpaidLoans.forEach(loan => {
-                const dueDate = new Date(loan.dueDate).toLocaleDateString();
+                const dueDate = new Date(loan.dueDate).toLocaleDateString('en-GB');
                 const totalDue = loan.totalRepayableAmount || (loan.loanAmount + (loan.serviceFee || 0));
                 const repaid = loan.amountRepaid || 0;
                 
@@ -289,7 +315,7 @@ async function handleActiveLoans(bot: TelegramBot, chatId: number, borrowerId: s
         await bot.sendMessage(chatId, responseText, opts);
 
     } catch (error) {
-        console.error("Error in handleActiveLoans:", error);
+        console.error("[BOT ERROR] In handleActiveLoans:", error);
         await bot.sendMessage(chatId, 'Sorry, there was an error fetching your active loans.');
     }
 }
@@ -302,7 +328,7 @@ async function handleHistory(bot: TelegramBot, chatId: number, borrowerId: strin
         if (transactions.length > 0) {
             responseText = '*Your Transaction History:*\n\n';
             transactions.slice(0, 10).forEach(txn => { // Limit to last 10 transactions
-                const txnDate = new Date(txn.date).toLocaleDateString();
+                const txnDate = new Date(txn.date).toLocaleDateString('en-GB');
                 const amount = txn.amount.toLocaleString('en-US', { style: 'currency', currency: 'ETB' });
                 responseText += `${txnDate} - ${txn.description} - *${amount}*\n`;
             });
