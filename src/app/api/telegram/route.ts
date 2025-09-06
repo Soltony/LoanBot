@@ -4,58 +4,53 @@ import TelegramBot from 'node-telegram-bot-api';
 import { getBorrowerByPhone, getActiveLoans, getProviders, getEligibility, getTransactions } from '@/lib/mockApi';
 
 let botInstance: TelegramBot | null = null;
-
-// A simple in-memory store to track user states
 const userState = new Map<number, string>();
 
 const initializeBot = () => {
+    if (botInstance) {
+        console.log("Bot instance already exists.");
+        return botInstance;
+    }
+
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) {
+        console.error('TELEGRAM_BOT_TOKEN is not set. The bot cannot start.');
         throw new Error('TELEGRAM_BOT_TOKEN is not set in .env file.');
     }
 
-    if (botInstance) {
-        return botInstance;
-    }
-    
-    console.log("Initializing Telegram bot with long polling...");
+    console.log("Initializing new Telegram bot instance...");
     const bot = new TelegramBot(token, { polling: true });
     botInstance = bot;
 
+    bot.on('polling_error', (error) => {
+        console.error('Polling error:', error.code, error.message);
+    });
+
     bot.onText(/\/start/, (msg) => {
+        console.log(`Received /start command from chat ID: ${msg.chat.id}`);
         handleStart(bot, msg.chat.id);
     });
 
-    // This handles messages that are not commands
     bot.on('message', (msg) => {
-        // Ignore commands that are handled by other listeners
-        if (msg.text?.startsWith('/')) return;
-
+        // Ignore commands which are handled by onText
+        if (msg.text?.startsWith('/')) {
+            console.log(`Ignoring command message: ${msg.text}`);
+            return;
+        }
+        
         const chatId = msg.chat.id;
-        // Check if we are expecting a phone number from this user
+        console.log(`Received message from chat ID: ${chatId}. Current state: ${userState.get(chatId)}`);
         if (userState.get(chatId) === 'awaiting_phone') {
             handleCheck(bot, chatId, msg.text || '');
         }
     });
-    
-    bot.onText(/\/check (.+)/, (msg, match) => {
-        const chatId = msg.chat.id;
-        const phoneNumber = match ? match[1] : '';
-        handleCheck(bot, chatId, phoneNumber);
+
+    bot.on('callback_query', (callbackQuery) => {
+        console.log(`Received callback query: ${callbackQuery.data}`);
+        handleCallbackQuery(bot, callbackQuery);
     });
 
-    bot.on('callback_query', (callbackQuery) => handleCallbackQuery(bot, callbackQuery));
-
-    bot.on('polling_error', (error) => {
-        console.error('Polling error:', error.message);
-    });
-    
-    bot.on('webhook_error', (error) => {
-        console.error('Webhook error:', error.message);
-    });
-    
-    console.log("Telegram bot successfully initialized.");
-
+    console.log("Telegram bot event listeners are set up.");
     return bot;
 };
 
@@ -64,26 +59,21 @@ async function handleStart(bot: TelegramBot, chatId: number) {
     const welcomeMessage = `Welcome to LoanBot! 🏦
 
 To get started, please send me your 9-digit phone number registered with the bank.`;
-
-    // Set the state for this user to indicate we're waiting for their phone number
     userState.set(chatId, 'awaiting_phone');
-
     await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
 }
 
 async function handleCheck(bot: TelegramBot, chatId: number, phoneNumber: string) {
-    if (!phoneNumber) {
-        await bot.sendMessage(chatId, 'Please provide your phone number. Example: `912345678`', { parse_mode: 'Markdown' });
+    if (!phoneNumber || !/^\d{9,15}$/.test(phoneNumber)) {
+        await bot.sendMessage(chatId, 'That doesn\'t look like a valid phone number. Please enter your 9-digit phone number.', { parse_mode: 'Markdown' });
         return;
     }
 
     try {
         const borrower = await getBorrowerByPhone(phoneNumber);
-        // Clear the user's state since we've received the phone number
         userState.delete(chatId);
         
         const welcomeMessage = `Hello, *${borrower.name}*! What would you like to do today?`;
-
         const opts = {
             reply_markup: {
                 inline_keyboard: [
@@ -93,7 +83,6 @@ async function handleCheck(bot: TelegramBot, chatId: number, phoneNumber: string
                 ]
             }
         };
-
         await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown', ...opts });
 
     } catch (error) {
@@ -204,20 +193,13 @@ async function handleHistory(bot: TelegramBot, chatId: number, borrowerId: strin
     }
 }
 
-
-// This endpoint now simply ensures the bot is running.
-// The bot itself handles messages via long polling.
+// This endpoint is just for initializing the bot.
 export async function GET(request: NextRequest) {
     try {
         initializeBot();
-        return NextResponse.json({status: 'ok', message: 'Bot is running with long polling.'});
+        return NextResponse.json({status: 'ok', message: 'Bot is running.'});
     } catch (error: any) {
         console.error('Error initializing Telegram bot:', error);
         return NextResponse.json({status: 'error', message: error.message || 'Internal server error'}, {status: 500});
     }
-}
-
-// The POST endpoint is no longer used for webhooks but can be kept for other purposes or removed.
-export async function POST(request: NextRequest) {
-    return NextResponse.json({status: 'ok', message: 'POST endpoint is not used for polling.'});
 }
