@@ -251,13 +251,16 @@ async function handleActiveLoans(bot: TelegramBot, chatId: number, borrowerId: s
             responseText = '*Your Active Loans:*\n\n';
             unpaidLoans.forEach(loan => {
                 const dueDate = new Date(loan.dueDate).toLocaleDateString();
+                const totalDue = loan.totalRepayableAmount || (loan.loanAmount + (loan.serviceFee || 0));
+                const repaid = loan.amountRepaid || 0;
+                
                 responseText += `*${loan.productName}*\n`;
-                responseText += `Total Due: *${loan.totalRepayableAmount.toLocaleString('en-US', { style: 'currency', currency: 'ETB' })}*\n`;
-                responseText += `Amount Repaid: ${loan.amountRepaid.toLocaleString('en-US', { style: 'currency', currency: 'ETB' })}\n`;
+                responseText += `Total Due: *${totalDue.toLocaleString('en-US', { style: 'currency', currency: 'ETB' })}*\n`;
+                responseText += `Amount Repaid: ${repaid.toLocaleString('en-US', { style: 'currency', currency: 'ETB' })}\n`;
                 responseText += `Due Date: ${dueDate}\n\n`;
             });
         } else {
-             responseText = 'You have no active loans at the moment. 🎉';
+             responseText = 'You have no active unpaid loans at the moment. All previous loans have been settled. 🎉';
         }
         
         const opts = {
