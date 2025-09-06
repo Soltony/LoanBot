@@ -8,14 +8,14 @@ const userState = new Map<number, string>();
 
 const initializeBot = () => {
     if (botInstance) {
-        console.log("Bot instance already exists.");
+        console.log("Bot instance already exists. Polling is active.");
         return botInstance;
     }
 
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) {
         console.error('--- TELEGRAM BOT FAILED TO START ---');
-        console.error('TELEGRAM_BOT_TOKEN is not set. Please add it to your .env file.');
+        console.error('TELEGRAM_BOT_TOKEN is not set. Please add it to your .env file and restart the server.');
         return null;
     }
 
@@ -26,6 +26,9 @@ const initializeBot = () => {
 
         bot.on('polling_error', (error) => {
             console.error('Polling error:', error.code, '-', error.message);
+            if (error.code === 'ETELEGRAM') {
+                 console.error('Telegram API Error. This might be due to an invalid token or network issues.');
+            }
         });
 
         bot.onText(/\/start/, (msg) => {
@@ -34,8 +37,8 @@ const initializeBot = () => {
         });
 
         bot.on('message', (msg) => {
+            // Ignore commands, which are handled by onText
             if (msg.text?.startsWith('/')) {
-                console.log(`Ignoring command message handled by onText: ${msg.text}`);
                 return;
             }
             
@@ -52,7 +55,7 @@ const initializeBot = () => {
         });
         
         console.log('--- TELEGRAM BOT IS RUNNING ---');
-        console.log('Bot is now polling for messages.');
+        console.log('Bot is now polling for messages. You can now interact with your bot in Telegram.');
         return bot;
     } catch(error) {
         console.error('--- TELEGRAM BOT FAILED TO INITIALIZE ---', error);
@@ -199,11 +202,14 @@ async function handleHistory(bot: TelegramBot, chatId: number, borrowerId: strin
     }
 }
 
-// Automatically initialize the bot when the server starts
-initializeBot();
-
-// This empty GET handler is to ensure the route is available.
-// The bot logic is handled by the long polling mechanism started by initializeBot().
+// The GET handler is now responsible for initializing the bot.
+// This is the most reliable way to start the bot in a local dev environment.
 export async function GET(request: NextRequest) {
-    return NextResponse.json({status: 'ok', message: 'Bot is polling for messages.'});
+    console.log("GET /api/telegram called. Initializing bot...");
+    const bot = initializeBot();
+    if (bot) {
+        return NextResponse.json({status: 'ok', message: 'Bot is polling for messages.'});
+    } else {
+        return NextResponse.json({status: 'error', message: 'Bot initialization failed. Check server logs.'}, { status: 500 });
+    }
 }
