@@ -118,8 +118,10 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
     }
 
     const chatId = message.chat.id;
-    const [action, ...args] = callbackQuery.data.split('_');
-
+    const parts = callbackQuery.data.split('_');
+    const action = parts.length > 1 ? parts.slice(0, -1).join('_') : parts[0];
+    const args = parts.length > 1 ? parts.slice(1) : [];
+    
     await bot.answerCallbackQuery(callbackQuery.id);
     
     const currentState = userState.get(chatId);
