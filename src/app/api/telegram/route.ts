@@ -39,7 +39,14 @@ const initializeBot = () => {
         bot.on('message', (msg) => {
             // Ignore commands, which are handled by onText
             if (msg.text?.startsWith('/')) {
-                return;
+                 if (!msg.text.startsWith('/start')) {
+                    // It's a command-like message, likely a phone number check
+                    const chatId = msg.chat.id;
+                    if (userState.get(chatId) === 'awaiting_phone') {
+                        handleCheck(bot, chatId, msg.text || '');
+                    }
+                 }
+                 return;
             }
             
             const chatId = msg.chat.id;
@@ -72,7 +79,10 @@ To get started, please send me your 9-digit phone number registered with the ban
     await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
 }
 
-async function handleCheck(bot: TelegramBot, chatId: number, phoneNumber: string) {
+async function handleCheck(bot: TelegramBot, chatId: number, messageText: string) {
+    // Extract numbers from the message text
+    const phoneNumber = messageText.replace(/\D/g, '');
+
     if (!phoneNumber || !/^\d{9,15}$/.test(phoneNumber)) {
         await bot.sendMessage(chatId, 'That doesn\'t look like a valid phone number. Please enter your 9-digit phone number.', { parse_mode: 'Markdown' });
         return;
