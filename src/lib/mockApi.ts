@@ -1,4 +1,3 @@
-'use client';
 import type { Borrower, Provider, Loan, Transaction, Eligibility, EligibilityProduct, ProductDetails } from './types';
 
 // The base URL for your loan application backend.
