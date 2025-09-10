@@ -3,74 +3,49 @@ import {NextRequest, NextResponse} from 'next/server';
 import TelegramBot from 'node-telegram-bot-api';
 import { getBorrowerByPhoneForBot, getActiveLoansForBot, getProvidersForBot, getEligibilityForBot, getTransactionsForBot, applyForLoanForBot, repayLoanForBot } from '@/lib/mockApi';
 
-let botInstance: TelegramBot | null = null;
+let bot: TelegramBot;
+
 const userState = new Map<number, {state: string, borrowerId?: string, productId?: string, loanId?: string}>();
 
+const token = process.env.TELEGRAM_BOT_TOKEN;
+if (!token) {
+    console.error('--- TELEGRAM BOT FAILED TO START ---');
+    console.error('TELEGRAM_BOT_TOKEN is not set. Please add it to your .env file and restart the server.');
+    throw new Error('TELEGRAM_BOT_TOKEN is not set.');
+}
 
-const initializeBot = () => {
-    if (botInstance) {
-        console.log("Bot instance already exists. Polling is active.");
-        return botInstance;
-    }
+bot = new TelegramBot(token);
 
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    if (!token) {
-        console.error('--- TELEGRAM BOT FAILED TO START ---');
-        console.error('TELEGRAM_BOT_TOKEN is not set. Please add it to your .env file and restart the server.');
-        return null;
-    }
-
-    console.log("Initializing new Telegram bot instance...");
-    try {
-        const bot = new TelegramBot(token, { polling: true });
-        botInstance = bot;
-
-        bot.on('polling_error', (error) => {
-            console.error('Polling error:', error.code, '-', error.message);
-            if (error.code === 'ETELEGRAM') {
-                 console.error('Telegram API Error. This might be due to an invalid token or network issues.');
-            }
-        });
-
-        bot.onText(/\/start/, (msg) => {
-            console.log(`Received /start command from chat ID: ${msg.chat.id}`);
-            handleStart(bot, msg.chat.id);
-        });
-
-        bot.on('message', (msg) => {
-            const chatId = msg.chat.id;
-            if (msg.text?.startsWith('/')) {
-                return;
-            }
-
-            const currentState = userState.get(chatId);
-            
-            console.log(`Received message from chat ID: ${chatId}. Current state: ${currentState?.state}`);
-            if (currentState?.state === 'awaiting_phone') {
-                handleCheck(bot, chatId, msg.text || '');
-            } else if (currentState?.state === 'awaiting_loan_amount') {
-                handleLoanAmount(bot, chatId, msg.text || '');
-            } else if (currentState?.state === 'awaiting_repayment_amount') {
-                handleRepaymentAmount(bot, chatId, msg.text || '');
-            }
-        });
-
-        bot.on('callback_query', (callbackQuery) => {
-            console.log(`[BOT LOG] Received callback_query with data: "${callbackQuery.data}"`);
-            handleCallbackQuery(bot, callbackQuery);
-        });
-        
-        console.log('--- TELEGRAM BOT IS RUNNING ---');
-        console.log('Bot is now polling for messages. You can now interact with your bot in Telegram.');
-        return bot;
-    } catch(error) {
-        console.error('--- TELEGRAM BOT FAILED TO INITIALIZE ---', error);
-        return null;
+const processUpdate = async (update: TelegramBot.Update) => {
+    if (update.message) {
+        await handleMessage(update.message);
+    } else if (update.callback_query) {
+        await handleCallbackQuery(update.callback_query);
     }
 };
 
+const handleMessage = async (msg: TelegramBot.Message) => {
+    const chatId = msg.chat.id;
+    const text = msg.text;
 
-async function handleStart(bot: TelegramBot, chatId: number) {
+    if (!text) return;
+
+    if (text.startsWith('/start')) {
+        await handleStart(chatId);
+    } else {
+        const currentState = userState.get(chatId);
+        if (currentState?.state === 'awaiting_phone') {
+            await handleCheck(chatId, text);
+        } else if (currentState?.state === 'awaiting_loan_amount') {
+            await handleLoanAmount(chatId, text);
+        } else if (currentState?.state === 'awaiting_repayment_amount') {
+            await handleRepaymentAmount(chatId, text);
+        }
+    }
+}
+
+
+async function handleStart(chatId: number) {
     const welcomeMessage = `Welcome to LoanBot! 🏦
 
 To get started, please send me your 9-digit phone number registered with the bank.`;
@@ -78,7 +53,7 @@ To get started, please send me your 9-digit phone number registered with the ban
     await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
 }
 
-async function handleCheck(bot: TelegramBot, chatId: number, messageText: string) {
+async function handleCheck(chatId: number, messageText: string) {
     console.log(`[BOT LOG] handleCheck received raw message text: "${messageText}"`);
 
     const phoneNumber = messageText.replace(/\D/g, '');
@@ -112,7 +87,7 @@ async function handleCheck(bot: TelegramBot, chatId: number, messageText: string
     }
 }
 
-async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.CallbackQuery) {
+async function handleCallbackQuery(callbackQuery: TelegramBot.CallbackQuery) {
     const message = callbackQuery.message;
     if (!message || !callbackQuery.data) {
         console.error('[BOT ERROR] Callback query is missing message or data.');
@@ -121,8 +96,10 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
 
     const chatId = message.chat.id;
     const data = callbackQuery.data;
-    const [action, ...args] = data.split('_');
-
+    const parts = data.split('_');
+    const action = parts[0];
+    const args = parts.slice(1);
+    
     await bot.answerCallbackQuery(callbackQuery.id);
     
     const currentState = userState.get(chatId);
@@ -141,13 +118,15 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
         case 'repay':
             await handleRepay(bot, chatId, args[0], args[1]);
             break;
-        case 'active': // from 'active_loans'
-            if (!currentState?.borrowerId) {
-                 console.error(`[BOT ERROR] 'active_loans' action failed: No borrowerId found in state for chat ${chatId}.`);
-                 await bot.sendMessage(chatId, 'Your session seems to have expired. Please start over with /start.');
-                 return;
-            }
-             await handleActiveLoans(bot, chatId, currentState.borrowerId);
+        case 'active':
+             if(parts.join('_').startsWith('active_loans')){
+                 if (!currentState?.borrowerId) {
+                     console.error(`[BOT ERROR] 'active_loans' action failed: No borrowerId found in state for chat ${chatId}.`);
+                     await bot.sendMessage(chatId, 'Your session seems to have expired. Please start over with /start.');
+                     return;
+                 }
+                 await handleActiveLoans(bot, chatId, currentState.borrowerId);
+             }
             break;
         case 'history':
             if (!currentState?.borrowerId) {
@@ -157,28 +136,30 @@ async function handleCallbackQuery(bot: TelegramBot, callbackQuery: TelegramBot.
             }
             await handleHistory(bot, chatId, currentState.borrowerId);
             break;
-        case 'main': // from 'main_menu'
-            console.log(`[BOT LOG] Entering 'main_menu' handler.`);
-            if (currentState?.borrowerId) {
-                console.log(`[BOT LOG] Found borrowerId: ${currentState.borrowerId}. Sending main menu.`);
-                 const welcomeMessage = `What else would you like to do today?`;
-                    const opts = {
-                        reply_markup: {
-                            inline_keyboard: [
-                                [{ text: 'Check Loan Eligibility', callback_data: `eligibility_${currentState.borrowerId}` }],
-                                [{ text: 'View My Active Loans', callback_data: `active_loans_${currentState.borrowerId}` }],
-                                [{ text: 'My Loan History', callback_data: `history_${currentState.borrowerId}` }],
-                            ]
-                        }
-                    };
-                await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown', ...opts });
-            } else {
-                console.error(`[BOT ERROR] 'main_menu' action failed: No borrowerId found in state for chat ${chatId}.`);
-                await bot.sendMessage(chatId, 'Your session seems to have expired. Please start over with /start.');
-            }
+        case 'main': 
+             if(data === 'main_menu'){
+                console.log(`[BOT LOG] Entering 'main_menu' handler.`);
+                if (currentState?.borrowerId) {
+                    console.log(`[BOT LOG] Found borrowerId: ${currentState.borrowerId}. Sending main menu.`);
+                     const welcomeMessage = `What else would you like to do today?`;
+                        const opts = {
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [{ text: 'Check Loan Eligibility', callback_data: `eligibility_${currentState.borrowerId}` }],
+                                    [{ text: 'View My Active Loans', callback_data: `active_loans_${currentState.borrowerId}` }],
+                                    [{ text: 'My Loan History', callback_data: `history_${currentState.borrowerId}` }],
+                                ]
+                            }
+                        };
+                    await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown', ...opts });
+                } else {
+                    console.error(`[BOT ERROR] 'main_menu' action failed: No borrowerId found in state for chat ${chatId}.`);
+                    await bot.sendMessage(chatId, 'Your session seems to have expired. Please start over with /start.');
+                }
+             }
             break;
         default:
-             console.log(`[BOT LOG] Unknown action received: ${action}`);
+             console.log(`[BOT LOG] Unknown action received: ${data}`);
              break;
     }
 }
@@ -419,14 +400,29 @@ async function handleHistory(bot: TelegramBot, chatId: number, borrowerId: strin
     }
 }
 
+// This handler is for setting the webhook.
 export async function GET(request: NextRequest) {
-    console.log("GET /api/telegram called. Initializing bot...");
-    const bot = initializeBot();
-    if (bot) {
-        return NextResponse.json({status: 'ok', message: 'Bot is polling for messages.'});
-    } else {
-        return NextResponse.json({status: 'error', message: 'Bot initialization failed. Check server logs.'}, { status: 500 });
+    try {
+        const url = request.nextUrl;
+        const webhookUrl = `${url.protocol}//${url.host}/api/telegram`;
+        await bot.setWebHook(webhookUrl);
+        console.log(`Webhook set to: ${webhookUrl}`);
+        return NextResponse.json({ success: true, message: `Webhook set to ${webhookUrl}` });
+    } catch (error) {
+        console.error('Error setting webhook:', error);
+        return NextResponse.json({ success: false, message: 'Failed to set webhook.' }, { status: 500 });
     }
 }
 
-    
+// This handler is for receiving updates from Telegram.
+export async function POST(request: NextRequest) {
+    try {
+        const update: TelegramBot.Update = await request.json();
+        console.log('Received update:', JSON.stringify(update, null, 2));
+        await processUpdate(update);
+        return NextResponse.json({ success: true });
+    } catch (error: any) {
+        console.error('Error processing update:', error);
+        return NextResponse.json({ success: false, message: 'Error processing update.', error: error.message }, { status: 500 });
+    }
+}
