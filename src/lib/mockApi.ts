@@ -2,7 +2,7 @@ import type { Borrower, Provider, Loan, Transaction, Eligibility, EligibilityPro
 
 // The base URL for your loan application backend.
 const API_BASE_URL = '/api';
-const EXTERNAL_API_BASE_URL = 'https://nibterasales.nibbank.com.et/api';
+const EXTERNAL_API_BASE_URL = 'https://nibteraloan.nibbank.com.et/api';
 
 
 // --- MOCK DATABASE for data not provided by the backend API ---

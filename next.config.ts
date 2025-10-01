@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'https://nibterasales.nibbank.com.et/api/:path*',
+        destination: 'https://nibteraloan.nibbank.com.et/api/:path*',
       },
     ]
   },
